@@ -1,0 +1,145 @@
+<UserControl x:Class="CodeIsland.WpfApp.Views.SessionListView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:CodeIsland.WpfApp.Views"
+             VerticalAlignment="Stretch"
+             UseLayoutRounding="True">
+  <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ClipToBounds="True">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <Grid Grid.Row="0" Margin="2,0,2,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <StackPanel>
+        <TextBlock Text="任务总览" FontSize="14" FontWeight="SemiBold" Foreground="#F2FFFFFF" />
+        <TextBlock Text="权限、问答、运行和完成项都可点击查看详情" FontSize="10" Foreground="#66FFFFFF" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+        <Border Background="#10101010" CornerRadius="10" Padding="8,3" Margin="0,0,7,0">
+          <TextBlock Text="{Binding SessionCountText}" FontSize="11" FontWeight="SemiBold" Foreground="#D9FFFFFF" />
+        </Border>
+        <Button Content="收起" Command="{Binding CollapseCommand}" FontSize="11" Padding="10,5" />
+      </StackPanel>
+    </Grid>
+
+    <TextBlock Grid.Row="1" Text="暂无任务" FontSize="12" Foreground="#80FFFFFF" HorizontalAlignment="Center" Margin="0,18" Visibility="{Binding HasNoHudListItems, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+
+    <ScrollViewer Grid.Row="2" Margin="0,10,0,0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Visibility="{Binding HasHudListItems, Converter={x:Static views:BoolVisibilityConverter.Instance}}" ClipToBounds="True">
+      <ItemsControl ItemsSource="{Binding HudListGroups}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Margin="0,0,0,12">
+              <Grid Margin="2,0,2,6">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Width="28" Height="28" CornerRadius="9" Background="#FF08080C" BorderBrush="#1FFFFFFF" BorderThickness="1" VerticalAlignment="Center">
+                  <Grid>
+                    <TextBlock Text="{Binding IconFallbackText}" FontSize="12" FontWeight="SemiBold" Foreground="#55FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Image Source="{Binding SourceIconUri}" Width="18" Height="18" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+
+                <TextBlock Grid.Column="1" Text="{Binding SourceDisplayName}" FontSize="13" FontWeight="SemiBold" Foreground="#EFFFFFFF" Margin="9,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+
+                <Border Grid.Column="2" Background="#12000000" CornerRadius="9" Padding="8,3" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding CountText}" FontSize="10" FontWeight="SemiBold" Foreground="#A6FFFFFF" />
+                </Border>
+              </Grid>
+
+              <ItemsControl ItemsSource="{Binding Items}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Margin="0,4">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+
+                      <Button Grid.Column="0" Command="{Binding OpenDetailCommand}" CommandParameter="{Binding ItemId}" Style="{StaticResource HudCardButtonStyle}" Cursor="Hand" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                        <Border x:Name="CardChrome" Background="#FF050507" CornerRadius="20" Padding="13,12" BorderBrush="#24FFFFFF" BorderThickness="1">
+                          <Grid>
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="46" />
+                              <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border x:Name="AvatarChrome" Grid.Column="0" Width="42" Height="42" CornerRadius="14" Background="#10FFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" VerticalAlignment="Top">
+                              <views:PixelMascotControl x:Name="ItemMascot" Width="34" Height="36" PixelSize="2.45" SessionSource="{Binding SourceKey}" SessionStatus="{Binding Status}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+
+                            <StackPanel x:Name="ItemTextPanel" Grid.Column="1" Margin="12,0,0,0">
+                              <Grid>
+                                <Grid.ColumnDefinitions>
+                                  <ColumnDefinition Width="*" />
+                                  <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="ProjectText" Grid.Column="0" Text="{Binding ProjectName}" FontSize="13" FontWeight="SemiBold" Foreground="#F2FFFFFF" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProjectName}" VerticalAlignment="Center" />
+                                <StackPanel x:Name="ChipsPanel" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="8,0,0,0">
+                                  <Border x:Name="TimeChip" Background="#14FFFFFF" CornerRadius="8" Padding="7,2" Margin="0,0,5,0">
+                                    <TextBlock Text="{Binding TimeText}" FontSize="10" Foreground="#D9FFFFFF" />
+                                  </Border>
+                                  <Border x:Name="StatusChip" Background="#14FFFFFF" CornerRadius="8" Padding="7,2">
+                                    <TextBlock Text="{Binding StatusText}" FontSize="10" FontWeight="SemiBold" Foreground="{Binding AccentBrush}" />
+                                  </Border>
+                                </StackPanel>
+                              </Grid>
+
+                              <TextBlock x:Name="SummaryText" Text="{Binding Summary}" FontSize="11" Foreground="#D9FFFFFF" Margin="0,8,0,0" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="34" ToolTip="{Binding Summary}" />
+
+                              <TextBlock x:Name="TitleText" Text="{Binding Title}" FontSize="10" Foreground="#8FFFFFFF" Margin="0,7,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}" />
+                            </StackPanel>
+                          </Grid>
+                        </Border>
+                      </Button>
+
+                      <StackPanel x:Name="SideActions" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="{Binding HasSideActions, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                        <Button x:Name="JumpButton" Content="跳转" Command="{Binding DataContext.JumpToTerminalCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding SessionId}" FontSize="10" Padding="8,3" Margin="0,0,0,6" Background="#14FFFFFF" Foreground="#E6FFFFFF" BorderBrush="#2AFFFFFF" Visibility="{Binding CanJumpToTerminal, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+                        <Button x:Name="RemoveButton" Content="移除" Command="{Binding DataContext.RemoveHudListItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding ItemId}" FontSize="10" Padding="8,3" Background="#12FFFFFF" Foreground="#D9FFFFFF" BorderBrush="#22000000" Visibility="{Binding CanRemoveFromHudList, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+                      </StackPanel>
+                    </Grid>
+                    <DataTemplate.Triggers>
+                      <DataTrigger Binding="{Binding DataContext.IsCompactHudMode, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                        <Setter TargetName="CardChrome" Property="CornerRadius" Value="15" />
+                        <Setter TargetName="CardChrome" Property="Padding" Value="10,8" />
+                        <Setter TargetName="AvatarChrome" Property="Width" Value="34" />
+                        <Setter TargetName="AvatarChrome" Property="Height" Value="34" />
+                        <Setter TargetName="AvatarChrome" Property="CornerRadius" Value="11" />
+                        <Setter TargetName="ItemMascot" Property="Width" Value="28" />
+                        <Setter TargetName="ItemMascot" Property="Height" Value="30" />
+                        <Setter TargetName="ItemMascot" Property="PixelSize" Value="2.1" />
+                        <Setter TargetName="ItemTextPanel" Property="Margin" Value="8,0,0,0" />
+                        <Setter TargetName="ProjectText" Property="FontSize" Value="12" />
+                        <Setter TargetName="ChipsPanel" Property="Margin" Value="6,0,0,0" />
+                        <Setter TargetName="TimeChip" Property="Padding" Value="6,1" />
+                        <Setter TargetName="StatusChip" Property="Padding" Value="6,1" />
+                        <Setter TargetName="SummaryText" Property="FontSize" Value="10" />
+                        <Setter TargetName="SummaryText" Property="Margin" Value="0,5,0,0" />
+                        <Setter TargetName="SummaryText" Property="MaxHeight" Value="24" />
+                        <Setter TargetName="TitleText" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="SideActions" Property="Margin" Value="6,0,0,0" />
+                        <Setter TargetName="JumpButton" Property="FontSize" Value="9" />
+                        <Setter TargetName="JumpButton" Property="Padding" Value="7,2" />
+                        <Setter TargetName="RemoveButton" Property="FontSize" Value="9" />
+                        <Setter TargetName="RemoveButton" Property="Padding" Value="7,2" />
+                      </DataTrigger>
+                    </DataTemplate.Triggers>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

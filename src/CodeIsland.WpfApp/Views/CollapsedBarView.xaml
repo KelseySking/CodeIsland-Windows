@@ -1,0 +1,107 @@
+<UserControl x:Class="CodeIsland.WpfApp.Views.CollapsedBarView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:CodeIsland.WpfApp.Views"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid>
+        <Grid Height="44" MinWidth="340" Cursor="Hand" ClipToBounds="True" Visibility="{Binding IsClassicHorizontalCollapsed, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,8,0">
+                <Border Width="34" Height="34" Background="#0DFFFFFF" CornerRadius="10" BorderBrush="#22000000" BorderThickness="1">
+                    <views:PixelMascotControl Width="34" Height="34" PixelSize="2.25" SessionSource="{Binding ActiveSource}" SessionStatus="{Binding ActiveStatus}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Width="104" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="CodeIsland" FontSize="12" FontWeight="SemiBold" Foreground="#F2FFFFFF" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding ActiveStatusText}" FontSize="10" Foreground="#99FFFFFF" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </StackPanel>
+
+            <Border Grid.Column="1" Background="#08FFFFFF" CornerRadius="12" Padding="10,4" VerticalAlignment="Center" Margin="2,0">
+                <TextBlock Text="{Binding CenterText}" FontSize="11" Foreground="#B8FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="220" TextTrimming="CharacterEllipsis" />
+            </Border>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="8,0,4,0">
+                <Border Background="#33FFB86B" CornerRadius="10" Padding="7,3" Margin="0,0,5,0" Visibility="{Binding HasPendingAction, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                    <TextBlock Text="{Binding PendingActionText}" FontSize="10" FontWeight="SemiBold" Foreground="#FFFFD0" TextTrimming="CharacterEllipsis" MaxWidth="64" />
+                </Border>
+                <Border Background="#14FFFFFF" CornerRadius="10" Padding="7,3" BorderBrush="#22000000" BorderThickness="1" Visibility="{Binding HasSessions, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                    <TextBlock Text="{Binding SessionCountText}" FontSize="11" FontWeight="SemiBold" Foreground="#E6FFFFFF" HorizontalAlignment="Center" />
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <Grid Width="44" Height="142" Cursor="Hand" Visibility="{Binding IsClassicSideCollapsed, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0" Width="40" Height="40" Background="#0DFFFFFF" CornerRadius="10" BorderBrush="#22000000" BorderThickness="1" HorizontalAlignment="Center">
+                <views:PixelMascotControl Width="40" Height="40" PixelSize="2.25" SessionSource="{Binding ActiveSource}" SessionStatus="{Binding ActiveStatus}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Grid.Row="1" Text="{Binding ActiveStatusText}" FontSize="10" Foreground="#D9FFFFFF" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="38" />
+            <Border Grid.Row="2" Background="#33FFB86B" CornerRadius="9" Padding="4,2" Margin="0,4,0,0" HorizontalAlignment="Center" Visibility="{Binding HasPendingAction, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                <TextBlock Text="待办" FontSize="9" FontWeight="SemiBold" Foreground="#FFFFD0" />
+            </Border>
+            <Border Grid.Row="3" Background="#14FFFFFF" CornerRadius="9" Padding="4,2" BorderBrush="#22000000" BorderThickness="1" Margin="0,4,0,0" HorizontalAlignment="Center" Visibility="{Binding HasSessions, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                <TextBlock Text="{Binding SessionCountText}" FontSize="10" FontWeight="SemiBold" Foreground="#E6FFFFFF" HorizontalAlignment="Center" />
+            </Border>
+        </Grid>
+
+        <Grid Width="280" Height="28" Cursor="Hand" ClipToBounds="False" Visibility="{Binding IsCompactHorizontalCollapsed, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+            <Grid Margin="2,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+                    <Border Width="26" Height="26" Background="#10FFFFFF" CornerRadius="9" BorderBrush="#22FFFFFF" BorderThickness="1">
+                        <views:PixelMascotControl Width="24" Height="24" PixelSize="1.7" SessionSource="{Binding ActiveSource}" SessionStatus="{Binding ActiveStatus}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="{Binding ActiveStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="#E6FFFFFF" TextTrimming="CharacterEllipsis" MaxWidth="58" Margin="6,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <TextBlock Grid.Column="1" Text="{Binding CenterText}" FontSize="10" Foreground="#82FFFFFF" TextTrimming="CharacterEllipsis" MaxWidth="106" HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0">
+                    <Border Background="#40FFB86B" CornerRadius="9" Padding="6,2" Margin="0,0,5,0" Visibility="{Binding HasPendingAction, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                        <TextBlock Text="{Binding PendingActionShortText}" FontSize="9" FontWeight="SemiBold" Foreground="#FFFFD0" />
+                    </Border>
+                    <Border Background="#14FFFFFF" CornerRadius="9" Padding="6,2" BorderBrush="#22000000" BorderThickness="1" Visibility="{Binding HasSessions, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                        <TextBlock Text="{Binding SessionCountText}" FontSize="10" FontWeight="SemiBold" Foreground="#E6FFFFFF" />
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <Grid Width="34" Height="106" Cursor="Hand" ClipToBounds="False" Visibility="{Binding IsCompactSideCollapsed, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+            <Grid Margin="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Border Grid.Row="0" Width="28" Height="28" Background="#10FFFFFF" CornerRadius="9" BorderBrush="#22FFFFFF" BorderThickness="1" HorizontalAlignment="Center">
+                    <views:PixelMascotControl Width="26" Height="26" PixelSize="1.75" SessionSource="{Binding ActiveSource}" SessionStatus="{Binding ActiveStatus}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Grid.Row="1" Text="{Binding ActiveStatusText}" FontSize="9" Foreground="#D9FFFFFF" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="29" />
+                <Border Grid.Row="2" Background="#40FFB86B" CornerRadius="8" Padding="4,1" Margin="0,3,0,0" HorizontalAlignment="Center" Visibility="{Binding HasPendingAction, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                    <TextBlock Text="{Binding PendingActionShortText}" FontSize="8" FontWeight="SemiBold" Foreground="#FFFFD0" />
+                </Border>
+                <Border Grid.Row="3" Background="#14FFFFFF" CornerRadius="8" Padding="4,1" BorderBrush="#22000000" BorderThickness="1" Margin="0,3,0,0" HorizontalAlignment="Center" Visibility="{Binding HasSessions, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                    <TextBlock Text="{Binding SessionCountText}" FontSize="9" FontWeight="SemiBold" Foreground="#E6FFFFFF" HorizontalAlignment="Center" />
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

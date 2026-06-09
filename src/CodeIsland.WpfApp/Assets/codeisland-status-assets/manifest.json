@@ -1,0 +1,50 @@
+[
+  {
+    "file": "codex-working.png",
+    "agent": "Codex",
+    "state": "working",
+    "size": "256x256",
+    "background": "transparent",
+    "style": "anthropomorphic pixel terminal mascot, no base, dark-HUD-safe palette, no pure black, no text"
+  },
+  {
+    "file": "codex-waiting-confirmation.png",
+    "agent": "Codex",
+    "state": "waiting",
+    "size": "256x256",
+    "background": "transparent",
+    "style": "anthropomorphic pixel terminal mascot, no base, dark-HUD-safe palette, no pure black, no text"
+  },
+  {
+    "file": "codex-idle.png",
+    "agent": "Codex",
+    "state": "idle",
+    "size": "256x256",
+    "background": "transparent",
+    "style": "anthropomorphic pixel terminal mascot, no base, dark-HUD-safe palette, no pure black, no text"
+  },
+  {
+    "file": "claude-code-working.png",
+    "agent": "Claude Code",
+    "state": "working",
+    "size": "256x256",
+    "background": "transparent",
+    "style": "anthropomorphic pixel terminal mascot, no base, dark-HUD-safe palette, no pure black, no text"
+  },
+  {
+    "file": "claude-code-waiting-confirmation.png",
+    "agent": "Claude Code",
+    "state": "waiting",
+    "size": "256x256",
+    "background": "transparent",
+    "style": "anthropomorphic pixel terminal mascot, no base, dark-HUD-safe palette, no pure black, no text"
+  },
+  {
+    "file": "claude-code-idle.png",
+    "agent": "Claude Code",
+    "state": "idle",
+    "size": "256x256",
+    "background": "transparent",
+    "style": "anthropomorphic pixel terminal mascot, no base, dark-HUD-safe palette, no pure black, no text"
+  }
+]

@@ -1,0 +1,367 @@
+<Window x:Class="CodeIsland.WpfApp.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:CodeIsland.WpfApp.Views"
+        Title="CodeIsland 设置"
+        Width="760"
+        Height="620"
+        MinWidth="680"
+        MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize"
+        Background="#FF050507"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+  <Border Background="#FF050507" Padding="14">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+      <TextBlock Grid.Row="0"
+                 Text="CodeIsland 设置"
+                 FontSize="22"
+                 FontWeight="SemiBold"
+                 Foreground="{StaticResource HudTextBrush}"
+                 Margin="0,0,0,12" />
+
+      <Border Grid.Row="1" Style="{StaticResource SettingsCardStyle}" Margin="0,0,0,12" Padding="12,9">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Border Width="8" Height="8" CornerRadius="4" Background="{StaticResource HudAccentBrush}" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" Text="{Binding FeedbackText}" FontSize="12" Foreground="#D9FFFFFF" TextWrapping="Wrap" Margin="10,0,0,0" />
+        </Grid>
+      </Border>
+
+      <TabControl x:Name="SettingsTabs" Grid.Row="2" Background="Transparent" BorderThickness="0" Foreground="{StaticResource HudTextBrush}">
+        <TabItem Header="通用">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12,8,0">
+            <StackPanel>
+              <TextBlock Text="通用设置" Style="{StaticResource SettingsSectionTitleStyle}" />
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="开机自启" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="开机后自动启动 CodeIsland。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <CheckBox Grid.Column="1" IsChecked="{Binding LaunchAtLogin, Mode=TwoWay}" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="240" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="显示位置" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="选择悬浮窗在屏幕上的位置。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <ComboBox Grid.Column="1" SelectedValue="{Binding DisplayPosition, Mode=TwoWay}" SelectedValuePath="Tag" VerticalAlignment="Center" MinHeight="34">
+                    <ComboBoxItem Content="顶部居中" Tag="top-center" />
+                    <ComboBoxItem Content="左侧居中" Tag="middle-left" />
+                    <ComboBoxItem Content="右侧居中" Tag="middle-right" />
+                    <ComboBoxItem Content="底部居中" Tag="bottom-center" />
+                  </ComboBox>
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="240" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="显示器" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="选择悬浮窗显示在哪个屏幕。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <ComboBox Grid.Column="1"
+                            ItemsSource="{Binding DisplayMonitorOptions}"
+                            DisplayMemberPath="DisplayName"
+                            SelectedValue="{Binding DisplayMonitor, Mode=TwoWay}"
+                            SelectedValuePath="Id"
+                            VerticalAlignment="Center"
+                            MinHeight="34" />
+                </Grid>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="行为">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12,8,0">
+            <StackPanel>
+              <TextBlock Text="行为与通知" Style="{StaticResource SettingsSectionTitleStyle}" />
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="自动审批安全工具" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="自动允许只读查看操作，其他操作仍需确认。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <CheckBox Grid.Column="1" IsChecked="{Binding AutoApproveSafeTools, Mode=TwoWay}" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="320" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="提醒转发地址" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="填写网址后，重要提醒会发送到这里。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <TextBox Grid.Column="1" Text="{Binding WebhookUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="34" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="180" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="会话超时（秒）" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="超过这个时间未操作，会自动结束等待。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <TextBox Grid.Column="1" Text="{Binding SessionTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="34" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="全屏时隐藏" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="全屏使用其他应用时隐藏悬浮窗。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <CheckBox Grid.Column="1" IsChecked="{Binding HideWhenFullscreen, Mode=TwoWay}" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="外观">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12,8,0">
+            <StackPanel>
+              <TextBlock Text="HUD 外观" Style="{StaticResource SettingsSectionTitleStyle}" />
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="240" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="HUD 样式" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="经典保留当前尺寸，紧凑会使用更小折叠态并只在待办时显示提醒灯效。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <ComboBox Grid.Column="1" SelectedValue="{Binding HudDensityMode, Mode=TwoWay}" SelectedValuePath="Tag" VerticalAlignment="Center" MinHeight="34">
+                    <ComboBoxItem Content="经典" Tag="classic" />
+                    <ComboBoxItem Content="紧凑" Tag="compact" />
+                  </ComboBox>
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="240" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="面板高度模式" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="自动会随内容调整，固定会保持高度不变，紧凑会占更少空间。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <ComboBox Grid.Column="1" SelectedValue="{Binding PanelHeightMode, Mode=TwoWay}" SelectedValuePath="Tag" VerticalAlignment="Center" MinHeight="34">
+                    <ComboBoxItem Content="自动" Tag="auto" />
+                    <ComboBoxItem Content="固定" Tag="fixed" />
+                    <ComboBoxItem Content="紧凑" Tag="compact" />
+                  </ComboBox>
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="完整显示最近消息" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="开启后，最近对话会显示完整文本。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <CheckBox Grid.Column="1" IsChecked="{Binding ShowFullRecentMessages, Mode=TwoWay}" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="音效">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12,8,0">
+            <StackPanel>
+              <TextBlock Text="运行时音效" Style="{StaticResource SettingsSectionTitleStyle}" />
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="启用音效" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="审批、完成等提醒会播放音效。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <CheckBox Grid.Column="1" IsChecked="{Binding SoundEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="220" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="音量" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="调整提醒音效的音量。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding VolumePercent, Mode=TwoWay}" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="智能抑制重复音效" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="短时间内相同音效只播放一次。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <CheckBox Grid.Column="1" IsChecked="{Binding SmartSoundSuppression, Mode=TwoWay}" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="快捷键">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12,8,0">
+            <StackPanel>
+              <TextBlock Text="全局快捷键" Style="{StaticResource SettingsSectionTitleStyle}" />
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="240" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="切换悬浮窗" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="显示、展开或收起悬浮窗。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <TextBox Grid.Column="1" Text="{Binding TogglePanelHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="34" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="240" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="批准当前审批" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="触发当前权限卡片的“允许一次”。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <TextBox Grid.Column="1" Text="{Binding ApproveHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="34" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="240" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="拒绝当前审批" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="触发当前权限卡片的“拒绝”。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <TextBox Grid.Column="1" Text="{Binding DenyHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="34" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="工具连接">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12,8,0">
+            <StackPanel>
+              <TextBlock Text="工具连接" Style="{StaticResource SettingsSectionTitleStyle}" />
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="Claude Code" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="让 CodeIsland 接收 Claude Code 的状态。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <Button x:Name="ClaudeHookButton" Grid.Column="1" Tag="claude" Content="连接" Click="HookToggle_Click" Padding="16,7" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="Codex" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="让 CodeIsland 接收 Codex 的状态。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <Button x:Name="CodexHookButton" Grid.Column="1" Tag="codex" Content="连接" Click="HookToggle_Click" Padding="16,7" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="关于">
+          <views:AboutView Margin="0,12,8,0" />
+        </TabItem>
+      </TabControl>
+    </Grid>
+  </Border>
+</Window>
