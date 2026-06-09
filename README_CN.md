@@ -222,7 +222,7 @@ Gemini CLI、Cursor、GitHub Copilot、Cline 等其他工具属于后续适配�
 
 本项目深受 macOS 平台优秀开源项目的启发，特此致谢：
 
-- **[CodeIsland (macOS)](https://github.com/wxtsky/wxtsky/CodeIsland)** — 感谢原作者 [@wxtsky](https://github.com/wxtsky) 带来的绝佳创意与灵感。本项目在 Windows 平台上延续了其“不切换窗口，实时监控 AI 代理”的核心设计理念，并针对 Windows 桌面环境（HUD 浮窗、Windows Terminal 等）进行了深度适配。
+- **[CodeIsland (macOS)](https://github.com/wxtsky/CodeIsland)** — 感谢原作者 [@wxtsky](https://github.com/wxtsky) 带来的绝佳创意与灵感。本项目在 Windows 平台上延续了其“不切换窗口，实时监控 AI 代理”的核心设计理念，并针对 Windows 桌面环境（HUD 浮窗、Windows Terminal 等）进行了深度适配。
 
 
 ## 许可证
