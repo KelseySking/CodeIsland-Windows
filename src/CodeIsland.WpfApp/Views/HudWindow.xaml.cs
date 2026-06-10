@@ -39,11 +39,8 @@ public partial class HudWindow : Window
     private const double MinHudDetailHeight = 300d;
     private const double WorkAreaMargin = 40d;
     private const double TransitionSizeTolerance = 1d;
-    private const int SurfaceTransitionMilliseconds = 240;
     private const int PendingTransitionMilliseconds = 210;
     private const int PendingAutoCollapseSeconds = 5;
-    private static readonly Duration SurfaceTransitionDuration = new(TimeSpan.FromMilliseconds(SurfaceTransitionMilliseconds));
-    private static readonly Duration PendingTransitionDuration = new(TimeSpan.FromMilliseconds(PendingTransitionMilliseconds));
     private static readonly IntPtr HwndTopmost = new(-1);
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_SHOWWINDOW = 0x0040;
@@ -67,10 +64,11 @@ public partial class HudWindow : Window
         SameSize
     }
 
-    private sealed record ShellTransitionPlan(RectangleGeometry? Clip, Rect InitialRect, Rect FinalRect, Duration Duration, bool UseClip, int TransitionId, Action? CompletedAction = null);
+    private sealed record ShellTransitionPlan(HudMorphPlan MorphPlan, int TransitionId, Action? CompletedAction = null);
 
     private readonly WpfAppState _state;
     private readonly SettingsManager _settings;
+    private readonly HudMorphAnimator _morphAnimator;
     private readonly DispatcherTimer _hoverOpenTimer;
     private readonly DispatcherTimer _hoverCloseTimer;
     private readonly DispatcherTimer _pendingAutoCollapseTimer;
@@ -85,7 +83,9 @@ public partial class HudWindow : Window
     private bool _shellTransitionInProgress;
     private bool _shellTransitionGraceActive;
     private bool _shellPendingBorderActive;
+    private bool _renderQueued;
     private SolidColorBrush? _shellPendingBorderBrush;
+    private PhysicalWindowRect? _lastAppliedPhysicalRect;
     private int _shellTransitionId;
 
     public HudWindow(WpfAppState state, SettingsManager settings)
@@ -93,6 +93,7 @@ public partial class HudWindow : Window
         InitializeComponent();
         _state = state;
         _settings = settings;
+        _morphAnimator = new HudMorphAnimator(Shell, ShellScale, ShellTranslate, ShellSnapshot, SnapshotScale, SnapshotTranslate);
         DataContext = state;
 
         _hoverOpenTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(360) };
@@ -169,37 +170,46 @@ public partial class HudWindow : Window
             Dispatcher.Invoke(() =>
             {
                 UpdateCollapsedBarOrientation();
-                Render();
-                UpdateWindowBounds();
+                QueueRender();
             });
         }
         else if (e.Key == "hide_when_fullscreen")
             Dispatcher.Invoke(ApplyFullscreenVisibility);
         else if (e.Key == "panel_height_mode")
-            Dispatcher.Invoke(UpdateWindowBounds);
+            Dispatcher.Invoke(QueueRender);
     }
 
     public void ShowNoActivate()
     {
         _hiddenForFullscreen = false;
         if (!IsVisible)
+        {
+            Render();
             Show();
+        }
+        else
+        {
+            Render();
+        }
 
         ApplyNoActivate();
         Topmost = true;
-        Render();
-        UpdateWindowBounds();
     }
 
     private void RestoreAfterFullscreen()
     {
         if (!IsVisible)
+        {
+            Render();
             Show();
+        }
+        else
+        {
+            Render();
+        }
 
         ApplyNoActivate();
         Topmost = true;
-        Render();
-        UpdateWindowBounds();
     }
 
     public void HideHud()
@@ -208,7 +218,8 @@ public partial class HudWindow : Window
         _hoverOpenTimer.Stop();
         _hoverCloseTimer.Stop();
         _pendingAutoCollapseTimer.Stop();
-        StopShellAnimations(clearClip: true);
+        _morphAnimator.Stop(clearClip: true);
+        _morphAnimator.ResetShell();
         _transitionGraceTimer.Stop();
         _shellTransitionInProgress = false;
         _shellTransitionGraceActive = false;
@@ -241,16 +252,34 @@ public partial class HudWindow : Window
 
     private void OnStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (Dispatcher.CheckAccess())
+        QueueRender();
+    }
+
+    private void QueueRender()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(QueueRender, DispatcherPriority.Render);
+            return;
+        }
+
+        if (_renderQueued)
+            return;
+
+        _renderQueued = true;
+        Dispatcher.BeginInvoke(() =>
+        {
+            _renderQueued = false;
             Render();
-        else
-            Dispatcher.BeginInvoke(Render);
+        }, DispatcherPriority.Render);
     }
 
     private void Render()
     {
+        _renderQueued = false;
         var previousLayout = CaptureCurrentLayout();
         var previousPendingExpanded = _pendingLayerExpanded;
+        var animationSettings = GetHudAnimationSettings();
 
         var next = _state.SurfaceKind switch
         {
@@ -259,10 +288,12 @@ public partial class HudWindow : Window
             WpfHudSurfaceKind.CompletionCard => typeof(CompletionCardView),
             _ => typeof(CollapsedBarView)
         };
+        var previousSurfaceType = _currentSurfaceType;
         var surfaceChanged = _currentSurfaceType != next;
         var expectedPendingExpanded = GetExpectedPendingLayerExpanded();
         var pendingExpandedChanged = previousPendingExpanded != expectedPendingExpanded;
-        var duration = surfaceChanged ? SurfaceTransitionDuration : PendingTransitionDuration;
+        var duration = surfaceChanged ? animationSettings.SurfaceDuration : animationSettings.PendingDuration;
+        var useCollapsedSource = ShouldUseCollapsedSource(previousSurfaceType, next);
 
         if (pendingExpandedChanged)
             _pendingLayerExpanded = expectedPendingExpanded;
@@ -271,17 +302,26 @@ public partial class HudWindow : Window
         var transitionKind = ResolveShellTransitionKind(previousLayout, targetLayout);
         if ((surfaceChanged || pendingExpandedChanged) && transitionKind == ShellTransitionKind.Shrink)
         {
-            _pendingLayerExpanded = previousPendingExpanded;
+            var deferTargetContentUntilCompleted = useCollapsedSource || pendingExpandedChanged;
+            if (deferTargetContentUntilCompleted)
+                _pendingLayerExpanded = previousPendingExpanded;
+
             var transitionPlan = PrepareShellTransition(
                 previousLayout,
                 targetLayout,
                 duration,
                 transitionKind,
+                useCollapsedSource,
                 completedAction: () =>
                 {
-                    ApplyRenderedState(next, expectedPendingExpanded);
+                    if (deferTargetContentUntilCompleted)
+                        ApplyRenderedState(next, expectedPendingExpanded, animationSettings, animateSurfaceContent: false);
                     UpdateWindowBounds();
                 });
+
+            if (!deferTargetContentUntilCompleted)
+                ApplyRenderedState(next, expectedPendingExpanded, animationSettings);
+
             StartPreparedShellTransition(transitionPlan);
             return;
         }
@@ -292,35 +332,41 @@ public partial class HudWindow : Window
                 previousLayout,
                 targetLayout,
                 duration,
-                transitionKind);
-            ApplyRenderedState(next, expectedPendingExpanded);
+                transitionKind,
+                useCollapsedSource);
+            ApplyRenderedState(next, expectedPendingExpanded, animationSettings);
             UpdateWindowBoundsAndStartTransition(transitionPlan, transitionKind);
             return;
         }
 
-        ApplyRenderedState(next, expectedPendingExpanded);
+        ApplyRenderedState(next, expectedPendingExpanded, animationSettings);
 
         ShellTransitionPlan? plan = null;
         if (surfaceChanged || pendingExpandedChanged)
-            plan = PrepareShellTransition(previousLayout, targetLayout, duration, transitionKind);
+            plan = PrepareShellTransition(previousLayout, targetLayout, duration, transitionKind, useCollapsedSource);
 
         UpdateWindowBoundsAndStartTransition(plan, transitionKind);
     }
 
-    private void ApplyRenderedState(Type surfaceType, bool pendingExpanded)
+    private void ApplyRenderedState(Type surfaceType, bool pendingExpanded, HudAnimationSettings animationSettings, bool animateSurfaceContent = true)
     {
         _pendingLayerExpanded = pendingExpanded;
-        RenderPending();
-        ApplySurfaceContent(surfaceType);
+        RenderPending(animationSettings);
+        ApplySurfaceContent(surfaceType, animationSettings, animateSurfaceContent);
         UpdateSurfaceHostPresentation();
     }
 
-    private void ApplySurfaceContent(Type surfaceType)
+    private void ApplySurfaceContent(Type surfaceType, HudAnimationSettings animationSettings, bool animateSurfaceContent)
     {
         var collapsedIsVertical = surfaceType == typeof(CollapsedBarView) && UseSideCollapsedLayout();
         if (_currentSurfaceType != surfaceType)
         {
-            SurfaceHost.Content = CreateView(surfaceType, collapsedIsVertical);
+            _morphAnimator.SwapContent(
+                SurfaceHost,
+                SurfaceOutgoingHost,
+                CreateView(surfaceType, collapsedIsVertical),
+                animateSurfaceContent && animationSettings.AllowsContentMotion && SurfaceHost.Content != null,
+                animationSettings.ContentDuration);
             _currentSurfaceType = surfaceType;
             _currentCollapsedBarIsVertical = surfaceType == typeof(CollapsedBarView) ? collapsedIsVertical : null;
             return;
@@ -351,7 +397,7 @@ public partial class HudWindow : Window
     private void UpdateSurfaceHostPresentation()
     {
         var pendingOnlyLayout = IsExpandedPendingOnlyLayout();
-        SurfaceHost.Visibility = pendingOnlyLayout ? Visibility.Collapsed : Visibility.Visible;
+        SurfaceLayer.Visibility = pendingOnlyLayout ? Visibility.Collapsed : Visibility.Visible;
         PendingHost.Margin = pendingOnlyLayout ? PendingHostOnlyMargin : PendingHostStackedMargin;
     }
 
@@ -370,7 +416,7 @@ public partial class HudWindow : Window
         _currentCollapsedBarIsVertical = collapsedIsVertical;
     }
 
-    private void RenderPending()
+    private void RenderPending(HudAnimationSettings animationSettings)
     {
         if (!CanShowFoldablePendingLayer())
         {
@@ -413,6 +459,8 @@ public partial class HudWindow : Window
         {
             if (PendingHost.Visibility != Visibility.Visible)
                 PendingHost.Visibility = Visibility.Visible;
+            if (animationSettings.AllowsContentMotion && pendingChanged)
+                _morphAnimator.FadeIn(PendingHost, animationSettings.ContentDuration);
             if (pendingChanged)
                 RestartPendingAutoCollapse();
         }
@@ -427,11 +475,14 @@ public partial class HudWindow : Window
 
     private string GetPendingKey() => $"{_state.PendingKind}:{_state.PendingActionRevision}";
 
+    private static HudAnimationSettings GetHudAnimationSettings() => HudAnimationSettings.Default;
+
     private void SetPendingLayerExpanded(bool expanded)
     {
         if (!CanShowFoldablePendingLayer() || _pendingLayerExpanded == expanded)
             return;
 
+        var animationSettings = GetHudAnimationSettings();
         var previousLayout = CaptureCurrentLayout();
         var previousPendingExpanded = _pendingLayerExpanded;
         _pendingLayerExpanded = expanded;
@@ -443,12 +494,13 @@ public partial class HudWindow : Window
             var transitionPlan = PrepareShellTransition(
                 previousLayout,
                 targetLayout,
-                PendingTransitionDuration,
+                animationSettings.PendingDuration,
                 transitionKind,
+                useCollapsedSource: true,
                 completedAction: () =>
                 {
                     _pendingLayerExpanded = expanded;
-                    RenderPending();
+                    RenderPending(animationSettings);
                     UpdateCollapsedBarOrientation();
                     UpdateSurfaceHostPresentation();
                     UpdateWindowBounds();
@@ -462,24 +514,27 @@ public partial class HudWindow : Window
             var transitionPlan = PrepareShellTransition(
                 previousLayout,
                 targetLayout,
-                PendingTransitionDuration,
-                transitionKind);
-            RenderPending();
+                animationSettings.PendingDuration,
+                transitionKind,
+                useCollapsedSource: true);
+            RenderPending(animationSettings);
             UpdateCollapsedBarOrientation();
             UpdateSurfaceHostPresentation();
             UpdateWindowBoundsAndStartTransition(transitionPlan, transitionKind);
             return;
         }
 
-        RenderPending();
+        RenderPending(animationSettings);
         UpdateCollapsedBarOrientation();
         UpdateSurfaceHostPresentation();
-        var plan = PrepareShellTransition(previousLayout, targetLayout, PendingTransitionDuration, transitionKind);
+        var plan = PrepareShellTransition(previousLayout, targetLayout, animationSettings.PendingDuration, transitionKind, useCollapsedSource: true);
         UpdateWindowBoundsAndStartTransition(plan, transitionKind);
     }
 
     private void HidePendingHost(bool clearContent)
     {
+        PendingHost.BeginAnimation(OpacityProperty, null);
+        PendingHost.Opacity = 1d;
         if (PendingHost.Visibility != Visibility.Collapsed)
             PendingHost.Visibility = Visibility.Collapsed;
 
@@ -511,11 +566,18 @@ public partial class HudWindow : Window
 
     private double GetCurrentWindowHeight() => ActualHeight > 0 ? ActualHeight : (!double.IsNaN(Height) && Height > 0 ? Height : 0d);
 
-    private ShellTransitionPlan? PrepareShellTransition(WindowLayout previousLayout, WindowLayout targetLayout, Duration duration, ShellTransitionKind transitionKind, Action? completedAction = null)
+    private ShellTransitionPlan? PrepareShellTransition(
+        WindowLayout previousLayout,
+        WindowLayout targetLayout,
+        Duration duration,
+        ShellTransitionKind transitionKind,
+        bool useCollapsedSource,
+        Action? completedAction = null)
     {
-        StopShellAnimations();
+        _morphAnimator.Stop();
         var transitionId = BeginShellTransitionProtection();
-        if (previousLayout.Width <= 0 || previousLayout.Height <= 0 || targetLayout.Width <= 0 || targetLayout.Height <= 0)
+        if (!GetHudAnimationSettings().AllowsShellMorph ||
+            previousLayout.Width <= 0 || previousLayout.Height <= 0 || targetLayout.Width <= 0 || targetLayout.Height <= 0)
         {
             CompleteShellTransitionProtection(transitionId);
             completedAction?.Invoke();
@@ -524,37 +586,69 @@ public partial class HudWindow : Window
 
         if (transitionKind == ShellTransitionKind.SameSize)
         {
-            Shell.Clip = null;
-            Shell.Opacity = 0.96d;
-            ShellScale.ScaleX = 0.985d;
-            ShellScale.ScaleY = 0.985d;
-            ShellTranslate.X = 0d;
-            ShellTranslate.Y = 0d;
-            return new ShellTransitionPlan(null, Rect.Empty, new Rect(0d, 0d, targetLayout.Width, targetLayout.Height), duration, UseClip: false, transitionId, completedAction);
+            var pulsePlan = new HudMorphPlan(
+                null,
+                Rect.Empty,
+                new Rect(0d, 0d, targetLayout.Width, targetLayout.Height),
+                duration,
+                UseClip: false,
+                new System.Windows.Point(0.5d, 0d),
+                InitialOpacity: 0.97d,
+                InitialScale: 0.99d);
+            _morphAnimator.Prepare(pulsePlan);
+            return new ShellTransitionPlan(pulsePlan, transitionId, completedAction);
         }
 
-        var initialRect = transitionKind == ShellTransitionKind.Shrink
-            ? new Rect(0d, 0d, Math.Max(1d, previousLayout.Width), Math.Max(1d, previousLayout.Height))
-            : CalculateInitialClipRect(previousLayout, targetLayout);
-        var finalRect = transitionKind == ShellTransitionKind.Shrink
-            ? CalculateShrinkFinalClipRect(previousLayout, targetLayout)
-            : new Rect(0d, 0d, Math.Max(1d, targetLayout.Width), Math.Max(1d, targetLayout.Height));
+        var (initialRect, finalRect) = CalculateShellMorphRects(previousLayout, targetLayout, transitionKind, useCollapsedSource);
         var clip = new RectangleGeometry(initialRect);
-        Shell.Clip = clip;
-        Shell.Opacity = 0.96d;
-        ShellScale.ScaleX = 1d;
-        ShellScale.ScaleY = 1d;
-        ShellTranslate.X = 0d;
-        ShellTranslate.Y = 0d;
-        Shell.RenderTransformOrigin = transitionKind == ShellTransitionKind.Shrink
-            ? GetTransitionOrigin(finalRect, initialRect)
-            : GetTransitionOrigin(initialRect, finalRect);
-        return new ShellTransitionPlan(clip, initialRect, finalRect, duration, UseClip: true, transitionId, completedAction);
+        var morphPlan = new HudMorphPlan(
+            clip,
+            initialRect,
+            finalRect,
+            duration,
+            UseClip: true,
+            transitionKind == ShellTransitionKind.Shrink
+                ? GetTransitionOrigin(finalRect, initialRect)
+                : GetTransitionOrigin(initialRect, finalRect),
+            CompletionClipRect: new Rect(0d, 0d, Math.Max(1d, targetLayout.Width), Math.Max(1d, targetLayout.Height)),
+            UseSnapshotLayer: transitionKind == ShellTransitionKind.Shrink && useCollapsedSource);
+        _morphAnimator.Prepare(morphPlan);
+        return new ShellTransitionPlan(morphPlan, transitionId, completedAction);
+    }
+
+    private static bool ShouldUseCollapsedSource(Type? previousSurfaceType, Type nextSurfaceType) =>
+        previousSurfaceType == typeof(CollapsedBarView) || nextSurfaceType == typeof(CollapsedBarView);
+
+    private (Rect InitialRect, Rect FinalRect) CalculateShellMorphRects(
+        WindowLayout previousLayout,
+        WindowLayout targetLayout,
+        ShellTransitionKind transitionKind,
+        bool useCollapsedSource)
+    {
+        if (!useCollapsedSource)
+        {
+            return transitionKind == ShellTransitionKind.Shrink
+                ? (
+                    new Rect(0d, 0d, Math.Max(1d, previousLayout.Width), Math.Max(1d, previousLayout.Height)),
+                    CalculateRelativeSourceRect(targetLayout, previousLayout))
+                : (
+                    CalculateRelativeSourceRect(previousLayout, targetLayout),
+                    new Rect(0d, 0d, Math.Max(1d, targetLayout.Width), Math.Max(1d, targetLayout.Height)));
+        }
+
+        var collapsedSourceLayout = CalculateCollapsedSourceLayout();
+        return transitionKind == ShellTransitionKind.Shrink
+            ? (
+                new Rect(0d, 0d, Math.Max(1d, previousLayout.Width), Math.Max(1d, previousLayout.Height)),
+                CalculateRelativeSourceRect(collapsedSourceLayout, previousLayout))
+            : (
+                CalculateRelativeSourceRect(collapsedSourceLayout, targetLayout),
+                new Rect(0d, 0d, Math.Max(1d, targetLayout.Width), Math.Max(1d, targetLayout.Height)));
     }
 
     private void UpdateWindowBoundsAndStartTransition(ShellTransitionPlan? plan, ShellTransitionKind transitionKind)
     {
-        if (transitionKind == ShellTransitionKind.Expand && plan?.UseClip == true)
+        if (transitionKind == ShellTransitionKind.Expand && plan?.MorphPlan.UseClip == true)
         {
             // Move the HWND once, lay out the target content, then reveal in the same dispatcher turn.
             UpdateWindowBounds();
@@ -572,48 +666,14 @@ public partial class HudWindow : Window
     private void StartPreparedShellTransition(ShellTransitionPlan? plan)
     {
         if (plan is null)
-        {
-            var transitionId = BeginShellTransitionProtection();
-            AnimateShellScale(SurfaceTransitionDuration, initialScale: 0.985d, initialOpacity: 0.96d, transitionId: transitionId);
             return;
-        }
 
         var easing = CreateShellTransitionEasing();
-        if (plan.UseClip && plan.Clip is not null)
+        _morphAnimator.Start(plan.MorphPlan, easing, () =>
         {
-            var rectAnimation = new RectAnimation(plan.FinalRect, plan.Duration)
-            {
-                EasingFunction = easing,
-                FillBehavior = FillBehavior.Stop
-            };
-            rectAnimation.Completed += (_, _) =>
-            {
-                plan.CompletedAction?.Invoke();
-                if (ReferenceEquals(Shell.Clip, plan.Clip))
-                    Shell.Clip = null;
-                ResetShellTransform();
-                CompleteShellTransitionProtection(plan.TransitionId);
-            };
-            plan.Clip.BeginAnimation(RectangleGeometry.RectProperty, rectAnimation);
-        }
-        else
-        {
-            Shell.Clip = null;
-        }
-
-        ShellScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1d, plan.Duration) { EasingFunction = easing, FillBehavior = FillBehavior.Stop });
-        ShellScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1d, plan.Duration) { EasingFunction = easing, FillBehavior = FillBehavior.Stop });
-        ShellTranslate.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0d, plan.Duration) { EasingFunction = easing, FillBehavior = FillBehavior.Stop });
-        ShellTranslate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0d, plan.Duration) { EasingFunction = easing, FillBehavior = FillBehavior.Stop });
-        var opacityAnimation = new DoubleAnimation(1d, plan.Duration) { EasingFunction = easing, FillBehavior = FillBehavior.Stop };
-        if (!plan.UseClip)
-            opacityAnimation.Completed += (_, _) =>
-            {
-                plan.CompletedAction?.Invoke();
-                ResetShellTransform();
-                CompleteShellTransitionProtection(plan.TransitionId);
-            };
-        Shell.BeginAnimation(OpacityProperty, opacityAnimation);
+            plan.CompletedAction?.Invoke();
+            CompleteShellTransitionProtection(plan.TransitionId);
+        });
     }
 
     private static IEasingFunction CreateShellTransitionEasing() => new CubicEase { EasingMode = EasingMode.EaseInOut };
@@ -630,24 +690,32 @@ public partial class HudWindow : Window
             : ShellTransitionKind.Expand;
     }
 
-    private Rect CalculateShrinkFinalClipRect(WindowLayout previousLayout, WindowLayout targetLayout)
+    private WindowLayout CalculateCollapsedSourceLayout()
     {
-        var endWidth = Math.Clamp(targetLayout.Width, 1d, Math.Max(1d, previousLayout.Width));
-        var endHeight = Math.Clamp(targetLayout.Height, 1d, Math.Max(1d, previousLayout.Height));
-        var endX = ClampRelativeCoordinate(targetLayout.Left - previousLayout.Left, previousLayout.Width, endWidth);
-        var endY = ClampRelativeCoordinate(targetLayout.Top - previousLayout.Top, previousLayout.Height, endHeight);
-
-        return new Rect(endX, endY, endWidth, endHeight);
+        var sideCollapsed = IsSideCenterPosition();
+        var width = sideCollapsed ? GetCollapsedSideWidth() : GetCollapsedHorizontalWidth();
+        var height = sideCollapsed ? GetCollapsedSideHeight() : GetCollapsedHorizontalHeight();
+        var shellPadding = IsCompactHudMode() ? CompactCollapsedShellPadding : ShellPadding;
+        var (left, top) = CalculateWindowPosition(width, height);
+        return new WindowLayout(
+            width,
+            height,
+            left,
+            top,
+            PendingHeight: 0d,
+            SurfaceHeight: Math.Max(0d, height - shellPadding),
+            MaxWindowHeight: GetMaxWindowHeight(),
+            PendingOnlyLayout: false);
     }
 
-    private Rect CalculateInitialClipRect(WindowLayout previousLayout, WindowLayout targetLayout)
+    private static Rect CalculateRelativeSourceRect(WindowLayout sourceLayout, WindowLayout containerLayout)
     {
-        var startWidth = Math.Clamp(previousLayout.Width, 1d, Math.Max(1d, targetLayout.Width));
-        var startHeight = Math.Clamp(previousLayout.Height, 1d, Math.Max(1d, targetLayout.Height));
-        var startX = ClampRelativeCoordinate(previousLayout.Left - targetLayout.Left, targetLayout.Width, startWidth);
-        var startY = ClampRelativeCoordinate(previousLayout.Top - targetLayout.Top, targetLayout.Height, startHeight);
+        var width = Math.Clamp(sourceLayout.Width, 1d, Math.Max(1d, containerLayout.Width));
+        var height = Math.Clamp(sourceLayout.Height, 1d, Math.Max(1d, containerLayout.Height));
+        var x = ClampRelativeCoordinate(sourceLayout.Left - containerLayout.Left, containerLayout.Width, width);
+        var y = ClampRelativeCoordinate(sourceLayout.Top - containerLayout.Top, containerLayout.Height, height);
 
-        return new Rect(startX, startY, startWidth, startHeight);
+        return new Rect(x, y, width, height);
     }
 
     private static double ClampRelativeCoordinate(double coordinate, double containerSize, double contentSize)
@@ -664,28 +732,6 @@ public partial class HudWindow : Window
         var originX = finalRect.Width <= 0 ? 0.5d : Math.Clamp((initialRect.Left + initialRect.Width / 2d) / finalRect.Width, 0d, 1d);
         var originY = finalRect.Height <= 0 ? 0d : Math.Clamp((initialRect.Top + initialRect.Height / 2d) / finalRect.Height, 0d, 1d);
         return new System.Windows.Point(originX, originY);
-    }
-
-    private void AnimateShellScale(Duration duration, double initialScale = 0.985d, double initialOpacity = 0.96d, int? transitionId = null)
-    {
-        StopShellAnimations(clearClip: true);
-        Shell.RenderTransformOrigin = new System.Windows.Point(0.5d, 0d);
-        ShellScale.ScaleX = initialScale;
-        ShellScale.ScaleY = initialScale;
-        ShellTranslate.X = 0d;
-        ShellTranslate.Y = 0d;
-        Shell.Opacity = initialOpacity;
-        var easing = CreateShellTransitionEasing();
-        ShellScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1d, duration) { EasingFunction = easing, FillBehavior = FillBehavior.Stop });
-        ShellScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1d, duration) { EasingFunction = easing, FillBehavior = FillBehavior.Stop });
-        var opacityAnimation = new DoubleAnimation(1d, duration) { EasingFunction = easing, FillBehavior = FillBehavior.Stop };
-        opacityAnimation.Completed += (_, _) =>
-        {
-            ResetShellTransform();
-            if (transitionId.HasValue)
-                CompleteShellTransitionProtection(transitionId.Value);
-        };
-        Shell.BeginAnimation(OpacityProperty, opacityAnimation);
     }
 
     private int BeginShellTransitionProtection()
@@ -734,28 +780,6 @@ public partial class HudWindow : Window
             _pendingAutoCollapseTimer.Start();
     }
 
-    private void StopShellAnimations(bool clearClip = false)
-    {
-        Shell.BeginAnimation(OpacityProperty, null);
-        ShellScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        ShellScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        ShellTranslate.BeginAnimation(TranslateTransform.XProperty, null);
-        ShellTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-        if (Shell.Clip is RectangleGeometry clip)
-            clip.BeginAnimation(RectangleGeometry.RectProperty, null);
-        if (clearClip)
-            Shell.Clip = null;
-    }
-
-    private void ResetShellTransform()
-    {
-        Shell.Opacity = 1d;
-        ShellScale.ScaleX = 1d;
-        ShellScale.ScaleY = 1d;
-        ShellTranslate.X = 0d;
-        ShellTranslate.Y = 0d;
-    }
-
     private void UpdateWindowBounds()
     {
         var layout = CalculateWindowLayout();
@@ -766,9 +790,15 @@ public partial class HudWindow : Window
         PendingHost.Width = contentWidth;
         PendingHost.Height = layout.PendingHeight > 0 ? layout.PendingHeight : 0d;
         PendingHost.MaxHeight = layout.PendingHeight > 0 ? layout.PendingHeight : 0d;
+        SurfaceLayer.Width = contentWidth;
+        SurfaceLayer.Height = layout.PendingOnlyLayout ? 0d : layout.SurfaceHeight;
+        SurfaceLayer.MaxHeight = layout.PendingOnlyLayout ? 0d : layout.SurfaceHeight;
         SurfaceHost.Width = contentWidth;
         SurfaceHost.Height = layout.PendingOnlyLayout ? 0d : layout.SurfaceHeight;
         SurfaceHost.MaxHeight = layout.PendingOnlyLayout ? 0d : layout.SurfaceHeight;
+        SurfaceOutgoingHost.Width = contentWidth;
+        SurfaceOutgoingHost.Height = layout.PendingOnlyLayout ? 0d : layout.SurfaceHeight;
+        SurfaceOutgoingHost.MaxHeight = layout.PendingOnlyLayout ? 0d : layout.SurfaceHeight;
         UpdateSurfaceHostPresentation();
         Shell.MaxHeight = Math.Max(GetCollapsedHorizontalHeight(), layout.MaxWindowHeight);
 
@@ -802,12 +832,16 @@ public partial class HudWindow : Window
             ? CalculatePhysicalWindowRect(handle, layout)
             : default;
 
-        Width = layout.Width;
-        Height = layout.Height;
-        Left = layout.Left;
-        Top = layout.Top;
+        if (double.IsNaN(Width) || Math.Abs(Width - layout.Width) > TransitionSizeTolerance)
+            Width = layout.Width;
+        if (double.IsNaN(Height) || Math.Abs(Height - layout.Height) > TransitionSizeTolerance)
+            Height = layout.Height;
+        if (double.IsNaN(Left) || Math.Abs(Left - layout.Left) > TransitionSizeTolerance)
+            Left = layout.Left;
+        if (double.IsNaN(Top) || Math.Abs(Top - layout.Top) > TransitionSizeTolerance)
+            Top = layout.Top;
 
-        if (handle != IntPtr.Zero)
+        if (handle != IntPtr.Zero && _lastAppliedPhysicalRect != physicalRect)
         {
             SetWindowPos(
                 handle,
@@ -817,6 +851,7 @@ public partial class HudWindow : Window
                 physicalRect.Width,
                 physicalRect.Height,
                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            _lastAppliedPhysicalRect = physicalRect;
         }
     }
 

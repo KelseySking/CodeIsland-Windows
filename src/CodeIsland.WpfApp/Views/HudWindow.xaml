@@ -10,26 +10,51 @@
         SizeToContent="Manual"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
-  <Border x:Name="Shell"
-          Background="{StaticResource HudBackgroundBrush}"
-          BorderBrush="{StaticResource HudBorderBrush}"
-          BorderThickness="1"
-          CornerRadius="18"
-          Padding="9"
-          RenderTransformOrigin="0.5,0">
-    <Border.RenderTransform>
-      <TransformGroup>
-        <ScaleTransform x:Name="ShellScale" ScaleX="1" ScaleY="1" />
-        <TranslateTransform x:Name="ShellTranslate" X="0" Y="0" />
-      </TransformGroup>
-    </Border.RenderTransform>
-    <Grid>
-      <Grid.RowDefinitions>
-        <RowDefinition Height="Auto" />
-        <RowDefinition Height="Auto" />
-      </Grid.RowDefinitions>
-      <ContentControl x:Name="PendingHost" Grid.Row="0" Margin="0,0,0,8" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
-      <ContentControl x:Name="SurfaceHost" Grid.Row="1" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
-    </Grid>
-  </Border>
+  <Grid x:Name="RootLayer">
+    <Border x:Name="Shell"
+            Background="{StaticResource HudBackgroundBrush}"
+            BorderBrush="{StaticResource HudBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="18"
+            Padding="9"
+            RenderTransformOrigin="0.5,0">
+      <Border.RenderTransform>
+        <TransformGroup>
+          <ScaleTransform x:Name="ShellScale" ScaleX="1" ScaleY="1" />
+          <TranslateTransform x:Name="ShellTranslate" X="0" Y="0" />
+        </TransformGroup>
+      </Border.RenderTransform>
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ContentControl x:Name="PendingHost" Grid.Row="0" Margin="0,0,0,8" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+        <Grid x:Name="SurfaceLayer" Grid.Row="1">
+          <ContentControl x:Name="SurfaceHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+          <ContentControl x:Name="SurfaceOutgoingHost"
+                          HorizontalContentAlignment="Stretch"
+                          VerticalContentAlignment="Stretch"
+                          Visibility="Collapsed"
+                          IsHitTestVisible="False" />
+        </Grid>
+      </Grid>
+    </Border>
+    <Image x:Name="ShellSnapshot"
+           Visibility="Collapsed"
+           IsHitTestVisible="False"
+           HorizontalAlignment="Left"
+           VerticalAlignment="Top"
+           Stretch="None"
+           SnapsToDevicePixels="True"
+           RenderOptions.BitmapScalingMode="LowQuality"
+           RenderTransformOrigin="0.5,0">
+      <Image.RenderTransform>
+        <TransformGroup>
+          <ScaleTransform x:Name="SnapshotScale" ScaleX="1" ScaleY="1" />
+          <TranslateTransform x:Name="SnapshotTranslate" X="0" Y="0" />
+        </TransformGroup>
+      </Image.RenderTransform>
+    </Image>
+  </Grid>
 </Window>
