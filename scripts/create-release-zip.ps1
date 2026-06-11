@@ -52,7 +52,9 @@ if (-not (Test-Path $outputPath)) {
 }
 
 $stagedAppExe = Join-Path $stagingDir "CodeIsland-Windows.exe"
-$version = (Get-Item -LiteralPath $stagedAppExe).VersionInfo.FileVersion
+$versionInfo = (Get-Item -LiteralPath $stagedAppExe).VersionInfo
+$version = $versionInfo.ProductVersion
+if (-not $version) { $version = $versionInfo.FileVersion }
 if (-not $version) { $version = "0.0.0" }
 
 $zipName = "CodeIsland-Windows-$Runtime-v$version.zip"

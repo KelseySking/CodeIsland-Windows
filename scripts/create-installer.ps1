@@ -109,7 +109,9 @@ try {
         New-Item -ItemType Directory -Path $outputPath | Out-Null
     }
 
-    $version = (Get-Item (Join-Path $stagingDir "CodeIsland-Windows.exe")).VersionInfo.FileVersion
+    $versionInfo = (Get-Item (Join-Path $stagingDir "CodeIsland-Windows.exe")).VersionInfo
+    $version = $versionInfo.ProductVersion
+    if (-not $version) { $version = $versionInfo.FileVersion }
     if (-not $version) { $version = "0.0.0" }
 
     $setupBaseName = "CodeIsland-Windows-Setup-v$version"
