@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media;
 using CodeIsland.Core.Services;
 using CodeIsland.WpfApp.Services;
 using CodeIsland.WpfApp.ViewModels;
@@ -21,6 +23,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        ConfigureRendering();
         base.OnStartup(e);
 
         _settings = new SettingsManager();
@@ -44,6 +47,11 @@ public partial class App : System.Windows.Application
         _tray = new WpfTrayService(_hudWindow, ShowSettings, ShowAbout, Shutdown);
         _hotkey = new WpfGlobalHotkey();
         RegisterHotkeys();
+    }
+
+    private static void ConfigureRendering()
+    {
+        RenderOptions.ProcessRenderMode = RenderMode.Default;
     }
 
     private void RegisterHotkeys()

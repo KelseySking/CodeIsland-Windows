@@ -44,6 +44,7 @@ public partial class HudWindow : Window
     private static readonly IntPtr HwndTopmost = new(-1);
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_SHOWWINDOW = 0x0040;
+    private const uint SWP_NOCOPYBITS = 0x0100;
 
     private readonly record struct WindowLayout(
         double Width,
@@ -84,9 +85,11 @@ public partial class HudWindow : Window
     private bool _shellTransitionGraceActive;
     private bool _shellPendingBorderActive;
     private bool _renderQueued;
+    private bool _renderAfterShellTransition;
     private SolidColorBrush? _shellPendingBorderBrush;
     private PhysicalWindowRect? _lastAppliedPhysicalRect;
     private int _shellTransitionId;
+    private bool _shellTransitionDefersHudVisualUpdates;
 
     public HudWindow(WpfAppState state, SettingsManager settings)
     {
@@ -223,6 +226,8 @@ public partial class HudWindow : Window
         _transitionGraceTimer.Stop();
         _shellTransitionInProgress = false;
         _shellTransitionGraceActive = false;
+        _renderAfterShellTransition = false;
+        ReleaseShellTransitionHudVisualUpdateDeferral();
         Hide();
     }
 
@@ -252,6 +257,12 @@ public partial class HudWindow : Window
 
     private void OnStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (_shellTransitionInProgress)
+        {
+            _renderAfterShellTransition = true;
+            return;
+        }
+
         QueueRender();
     }
 
@@ -302,7 +313,8 @@ public partial class HudWindow : Window
         var transitionKind = ResolveShellTransitionKind(previousLayout, targetLayout);
         if ((surfaceChanged || pendingExpandedChanged) && transitionKind == ShellTransitionKind.Shrink)
         {
-            var deferTargetContentUntilCompleted = useCollapsedSource || pendingExpandedChanged;
+            var deferTargetContentUntilCompleted = useCollapsedSource || pendingExpandedChanged || animationSettings.UsesSnapshotLayerForShrink;
+            var revealCollapsedContentAfterShrink = deferTargetContentUntilCompleted && next == typeof(CollapsedBarView);
             if (deferTargetContentUntilCompleted)
                 _pendingLayerExpanded = previousPendingExpanded;
 
@@ -315,8 +327,19 @@ public partial class HudWindow : Window
                 completedAction: () =>
                 {
                     if (deferTargetContentUntilCompleted)
+                    {
                         ApplyRenderedState(next, expectedPendingExpanded, animationSettings, animateSurfaceContent: false);
+                        if (revealCollapsedContentAfterShrink)
+                            PrepareCollapsedShrinkHandoff();
+                    }
+                    if (revealCollapsedContentAfterShrink)
+                    {
+                        CompleteCollapsedShrinkHandoff(animationSettings);
+                        return;
+                    }
+
                     UpdateWindowBounds();
+                    Shell.UpdateLayout();
                 });
 
             if (!deferTargetContentUntilCompleted)
@@ -366,13 +389,51 @@ public partial class HudWindow : Window
                 SurfaceOutgoingHost,
                 CreateView(surfaceType, collapsedIsVertical),
                 animateSurfaceContent && animationSettings.AllowsContentMotion && SurfaceHost.Content != null,
-                animationSettings.ContentDuration);
+                animationSettings.ContentDuration,
+                animationSettings.ContentSlideOffset);
             _currentSurfaceType = surfaceType;
             _currentCollapsedBarIsVertical = surfaceType == typeof(CollapsedBarView) ? collapsedIsVertical : null;
             return;
         }
 
         UpdateCollapsedBarOrientation();
+    }
+
+    private void PrepareCollapsedShrinkHandoff()
+    {
+        SurfaceHost.BeginAnimation(OpacityProperty, null);
+        SurfaceHost.Opacity = 0d;
+        RootLayer.BeginAnimation(OpacityProperty, null);
+        RootLayer.Opacity = 1d;
+    }
+
+    private void CompleteCollapsedShrinkHandoff(HudAnimationSettings animationSettings)
+    {
+        if (_state.SurfaceKind != WpfHudSurfaceKind.Collapsed || SurfaceHost.Content is not CollapsedBarView)
+        {
+            QueueRender();
+            return;
+        }
+
+        var layout = CalculateWindowLayout();
+        ApplyWindowContentLayout(layout);
+        ApplyShellResizeHandoffSize(layout);
+        Shell.UpdateLayout();
+        ApplyWindowLayout(layout);
+        ClearShellResizeHandoffSize();
+        Shell.UpdateLayout();
+        QueueCollapsedContentReveal(animationSettings);
+    }
+
+    private void QueueCollapsedContentReveal(HudAnimationSettings animationSettings)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_state.SurfaceKind != WpfHudSurfaceKind.Collapsed || SurfaceHost.Content is not CollapsedBarView)
+                return;
+
+            _morphAnimator.FadeIn(SurfaceHost, animationSettings.ContentDuration, slideOffset: 0d);
+        }, DispatcherPriority.Render);
     }
 
     private bool GetExpectedPendingLayerExpanded()
@@ -460,7 +521,7 @@ public partial class HudWindow : Window
             if (PendingHost.Visibility != Visibility.Visible)
                 PendingHost.Visibility = Visibility.Visible;
             if (animationSettings.AllowsContentMotion && pendingChanged)
-                _morphAnimator.FadeIn(PendingHost, animationSettings.ContentDuration);
+                _morphAnimator.FadeIn(PendingHost, animationSettings.ContentDuration, animationSettings.ContentSlideOffset);
             if (pendingChanged)
                 RestartPendingAutoCollapse();
         }
@@ -475,7 +536,7 @@ public partial class HudWindow : Window
 
     private string GetPendingKey() => $"{_state.PendingKind}:{_state.PendingActionRevision}";
 
-    private static HudAnimationSettings GetHudAnimationSettings() => HudAnimationSettings.Default;
+    private static HudAnimationSettings GetHudAnimationSettings() => HudAnimationSettings.ForCurrentRenderer();
 
     private void SetPendingLayerExpanded(bool expanded)
     {
@@ -504,6 +565,7 @@ public partial class HudWindow : Window
                     UpdateCollapsedBarOrientation();
                     UpdateSurfaceHostPresentation();
                     UpdateWindowBounds();
+                    Shell.UpdateLayout();
                 });
             StartPreparedShellTransition(transitionPlan);
             return;
@@ -576,7 +638,8 @@ public partial class HudWindow : Window
     {
         _morphAnimator.Stop();
         var transitionId = BeginShellTransitionProtection();
-        if (!GetHudAnimationSettings().AllowsShellMorph ||
+        var animationSettings = GetHudAnimationSettings();
+        if (!animationSettings.AllowsShellMorph ||
             previousLayout.Width <= 0 || previousLayout.Height <= 0 || targetLayout.Width <= 0 || targetLayout.Height <= 0)
         {
             CompleteShellTransitionProtection(transitionId);
@@ -600,7 +663,10 @@ public partial class HudWindow : Window
         }
 
         var (initialRect, finalRect) = CalculateShellMorphRects(previousLayout, targetLayout, transitionKind, useCollapsedSource);
-        var clip = new RectangleGeometry(initialRect);
+        var initialClipRadius = CalculateMorphClipRadius(initialRect, GetCurrentShellClipRadius());
+        var finalClipRadius = CalculateMorphClipRadius(finalRect, GetShellCornerRadius().TopLeft);
+        var completionClipRect = new Rect(0d, 0d, Math.Max(1d, targetLayout.Width), Math.Max(1d, targetLayout.Height));
+        var clip = new RectangleGeometry(initialRect, initialClipRadius, initialClipRadius);
         var morphPlan = new HudMorphPlan(
             clip,
             initialRect,
@@ -610,8 +676,11 @@ public partial class HudWindow : Window
             transitionKind == ShellTransitionKind.Shrink
                 ? GetTransitionOrigin(finalRect, initialRect)
                 : GetTransitionOrigin(initialRect, finalRect),
-            CompletionClipRect: new Rect(0d, 0d, Math.Max(1d, targetLayout.Width), Math.Max(1d, targetLayout.Height)),
-            UseSnapshotLayer: transitionKind == ShellTransitionKind.Shrink && useCollapsedSource);
+            InitialClipRadius: initialClipRadius,
+            FinalClipRadius: finalClipRadius,
+            CompletionClipRect: completionClipRect,
+            CompletionClipRadius: CalculateMorphClipRadius(completionClipRect, GetShellCornerRadius().TopLeft),
+            UseSnapshotLayer: transitionKind == ShellTransitionKind.Shrink && animationSettings.UsesSnapshotLayerForShrink);
         _morphAnimator.Prepare(morphPlan);
         return new ShellTransitionPlan(morphPlan, transitionId, completedAction);
     }
@@ -668,7 +737,7 @@ public partial class HudWindow : Window
         if (plan is null)
             return;
 
-        var easing = CreateShellTransitionEasing();
+        var easing = CreateShellTransitionEasing(plan.MorphPlan);
         _morphAnimator.Start(plan.MorphPlan, easing, () =>
         {
             plan.CompletedAction?.Invoke();
@@ -676,7 +745,34 @@ public partial class HudWindow : Window
         });
     }
 
-    private static IEasingFunction CreateShellTransitionEasing() => new CubicEase { EasingMode = EasingMode.EaseInOut };
+    private static IEasingFunction CreateShellTransitionEasing(HudMorphPlan plan) =>
+        plan.UseClip ? new CriticallyDampedEase() : new CubicEase { EasingMode = EasingMode.EaseOut };
+
+    private sealed class CriticallyDampedEase : EasingFunctionBase
+    {
+        private const double Response = 8.5d;
+        private static readonly double EndValue = Calculate(1d);
+
+        public CriticallyDampedEase()
+        {
+            EasingMode = EasingMode.EaseIn;
+        }
+
+        protected override double EaseInCore(double normalizedTime)
+        {
+            if (normalizedTime <= 0d)
+                return 0d;
+            if (normalizedTime >= 1d)
+                return 1d;
+
+            return Math.Clamp(Calculate(normalizedTime) / EndValue, 0d, 1d);
+        }
+
+        protected override Freezable CreateInstanceCore() => new CriticallyDampedEase();
+
+        private static double Calculate(double time) =>
+            1d - (1d + Response * time) * Math.Exp(-Response * time);
+    }
 
     private ShellTransitionKind ResolveShellTransitionKind(WindowLayout previousLayout, WindowLayout targetLayout)
     {
@@ -734,6 +830,21 @@ public partial class HudWindow : Window
         return new System.Windows.Point(originX, originY);
     }
 
+    private double GetCurrentShellClipRadius()
+    {
+        var radius = Shell.CornerRadius.TopLeft;
+        return radius > 0d ? radius : GetShellCornerRadius().TopLeft;
+    }
+
+    private static double CalculateMorphClipRadius(Rect rect, double shellRadius)
+    {
+        var shortestSide = Math.Min(rect.Width, rect.Height);
+        if (double.IsNaN(shortestSide) || double.IsInfinity(shortestSide) || shortestSide <= 0d)
+            return 0d;
+
+        return Math.Min(Math.Max(0d, shellRadius), shortestSide / 2d);
+    }
+
     private int BeginShellTransitionProtection()
     {
         _hoverCloseTimer.Stop();
@@ -741,6 +852,11 @@ public partial class HudWindow : Window
         _transitionGraceTimer.Stop();
         _shellTransitionGraceActive = false;
         _shellTransitionInProgress = true;
+        if (!_shellTransitionDefersHudVisualUpdates)
+        {
+            _state.BeginHudVisualUpdateDeferral();
+            _shellTransitionDefersHudVisualUpdates = true;
+        }
         return ++_shellTransitionId;
     }
 
@@ -755,6 +871,21 @@ public partial class HudWindow : Window
         _shellTransitionGraceActive = true;
         _transitionGraceTimer.Stop();
         _transitionGraceTimer.Start();
+        ReleaseShellTransitionHudVisualUpdateDeferral();
+        if (_renderAfterShellTransition)
+        {
+            _renderAfterShellTransition = false;
+            QueueRender();
+        }
+    }
+
+    private void ReleaseShellTransitionHudVisualUpdateDeferral()
+    {
+        if (!_shellTransitionDefersHudVisualUpdates)
+            return;
+
+        _shellTransitionDefersHudVisualUpdates = false;
+        _state.EndHudVisualUpdateDeferral();
     }
 
     private void ScheduleCloseAfterTransitionIfNeeded()
@@ -783,6 +914,12 @@ public partial class HudWindow : Window
     private void UpdateWindowBounds()
     {
         var layout = CalculateWindowLayout();
+        ApplyWindowContentLayout(layout);
+        ApplyWindowLayout(layout);
+    }
+
+    private void ApplyWindowContentLayout(WindowLayout layout)
+    {
         var shellPadding = GetShellPadding();
         var contentWidth = Math.Max(0d, layout.Width - shellPadding);
 
@@ -801,8 +938,22 @@ public partial class HudWindow : Window
         SurfaceOutgoingHost.MaxHeight = layout.PendingOnlyLayout ? 0d : layout.SurfaceHeight;
         UpdateSurfaceHostPresentation();
         Shell.MaxHeight = Math.Max(GetCollapsedHorizontalHeight(), layout.MaxWindowHeight);
+    }
 
-        ApplyWindowLayout(layout);
+    private void ApplyShellResizeHandoffSize(WindowLayout layout)
+    {
+        Shell.Width = layout.Width;
+        Shell.Height = layout.Height;
+        Shell.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+        Shell.VerticalAlignment = System.Windows.VerticalAlignment.Top;
+    }
+
+    private void ClearShellResizeHandoffSize()
+    {
+        Shell.ClearValue(WidthProperty);
+        Shell.ClearValue(HeightProperty);
+        Shell.ClearValue(HorizontalAlignmentProperty);
+        Shell.ClearValue(VerticalAlignmentProperty);
     }
 
     private WindowLayout CalculateWindowLayout()
@@ -843,6 +994,11 @@ public partial class HudWindow : Window
 
         if (handle != IntPtr.Zero && _lastAppliedPhysicalRect != physicalRect)
         {
+            var flags = SWP_NOACTIVATE | SWP_SHOWWINDOW;
+            if (_lastAppliedPhysicalRect is { } lastAppliedPhysicalRect &&
+                (lastAppliedPhysicalRect.Width != physicalRect.Width || lastAppliedPhysicalRect.Height != physicalRect.Height))
+                flags |= SWP_NOCOPYBITS;
+
             SetWindowPos(
                 handle,
                 HwndTopmost,
@@ -850,7 +1006,7 @@ public partial class HudWindow : Window
                 physicalRect.Y,
                 physicalRect.Width,
                 physicalRect.Height,
-                SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                flags);
             _lastAppliedPhysicalRect = physicalRect;
         }
     }
@@ -1266,6 +1422,7 @@ public partial class HudWindow : Window
         MouseLeftButtonUp -= OnMouseLeftButtonUp;
         _state.PropertyChanged -= OnStatePropertyChanged;
         _settings.SettingChanged -= OnSettingChanged;
+        ReleaseShellTransitionHudVisualUpdateDeferral();
         base.OnClosed(e);
     }
 

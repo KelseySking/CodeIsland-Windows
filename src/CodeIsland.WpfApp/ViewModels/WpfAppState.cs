@@ -52,6 +52,11 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private System.Threading.Timer? _processMonitorTimer;
     private string? _selectedSessionTranscriptRefreshSessionId;
     private bool _disposed;
+    private readonly HashSet<string> _deferredSessionItemIds = new(StringComparer.Ordinal);
+    private int _hudVisualUpdateDeferralDepth;
+    private bool _hudVisualRefreshPending;
+    private bool _hudQuestionOptionsRefreshPending;
+    private bool _hudSessionItemsRefreshPending;
 
     public WpfAppState(SettingsManager settings, EventLogger? logger = null, WpfWebhookNotifier? webhookNotifier = null)
     {
@@ -75,6 +80,37 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         SelectedSessionJumpToTerminalCommand = new RelayCommand(() => JumpToTerminal(_selectedSessionId));
         _settings.SettingChanged += OnSettingChanged;
         StartProcessMonitor();
+    }
+
+    public void BeginHudVisualUpdateDeferral()
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null && !dispatcher.CheckAccess())
+        {
+            dispatcher.Invoke(BeginHudVisualUpdateDeferral);
+            return;
+        }
+
+        _hudVisualUpdateDeferralDepth++;
+    }
+
+    public void EndHudVisualUpdateDeferral()
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null && !dispatcher.CheckAccess())
+        {
+            dispatcher.Invoke(EndHudVisualUpdateDeferral);
+            return;
+        }
+
+        if (_hudVisualUpdateDeferralDepth <= 0)
+            return;
+
+        _hudVisualUpdateDeferralDepth--;
+        if (_hudVisualUpdateDeferralDepth > 0)
+            return;
+
+        FlushDeferredHudVisualUpdates();
     }
 
     public ObservableCollection<WpfSessionItemViewModel> Sessions { get; } = new();
@@ -594,6 +630,17 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     private void RefreshQuestionOptions()
     {
+        if (IsHudVisualUpdateDeferred)
+        {
+            _hudQuestionOptionsRefreshPending = true;
+            return;
+        }
+
+        RefreshQuestionOptionsCore();
+    }
+
+    private void RefreshQuestionOptionsCore()
+    {
         QuestionOptions.Clear();
         if (GetCurrentQuestion() is { } pending)
         {
@@ -801,10 +848,18 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     {
         var removed = _sessions.Remove(sessionId);
         removed = _removedHudSessionIds.Remove(sessionId) || removed;
-        if (_sessionItems.Remove(sessionId, out var removedItem))
+        if (_sessionItems.ContainsKey(sessionId))
         {
-            Sessions.Remove(removedItem);
-            removed = true;
+            if (IsHudVisualUpdateDeferred)
+            {
+                _deferredSessionItemIds.Add(sessionId);
+                _hudSessionItemsRefreshPending = true;
+                removed = true;
+            }
+            else if (RemoveSessionItemCore(sessionId))
+            {
+                removed = true;
+            }
         }
 
         if (RemovePendingActionsForSession(sessionId, pendingResponseReason))
@@ -1063,6 +1118,18 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     private void SyncSessionItem(string sessionId, SessionSnapshot snapshot)
     {
+        if (IsHudVisualUpdateDeferred)
+        {
+            _deferredSessionItemIds.Add(sessionId);
+            _hudSessionItemsRefreshPending = true;
+            return;
+        }
+
+        SyncSessionItemCore(sessionId, snapshot);
+    }
+
+    private void SyncSessionItemCore(string sessionId, SessionSnapshot snapshot)
+    {
         if (_sessionItems.TryGetValue(sessionId, out var item))
         {
             item.Update(snapshot);
@@ -1073,6 +1140,28 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             _sessionItems[sessionId] = item;
             Sessions.Insert(0, item);
         }
+    }
+
+    private void SyncDeferredSessionItems()
+    {
+        foreach (var sessionId in _deferredSessionItemIds.ToArray())
+        {
+            if (_sessions.TryGetValue(sessionId, out var snapshot))
+                SyncSessionItemCore(sessionId, snapshot);
+            else
+                RemoveSessionItemCore(sessionId);
+        }
+
+        _deferredSessionItemIds.Clear();
+    }
+
+    private bool RemoveSessionItemCore(string sessionId)
+    {
+        if (!_sessionItems.Remove(sessionId, out var removedItem))
+            return false;
+
+        Sessions.Remove(removedItem);
+        return true;
     }
 
     private static SessionSnapshot ApplyTranscriptMessages(SessionSnapshot? existing, SessionSnapshot snapshot)
@@ -1196,6 +1285,17 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     private void RefreshAll()
     {
+        if (IsHudVisualUpdateDeferred)
+        {
+            _hudVisualRefreshPending = true;
+            return;
+        }
+
+        RefreshAllCore();
+    }
+
+    private void RefreshAllCore()
+    {
         RebuildHudListItems();
         OnPropertyChanged(string.Empty);
         OnPropertyChanged(nameof(ShouldShowPendingAlert));
@@ -1206,6 +1306,28 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(HasHudListItems));
         OnPropertyChanged(nameof(HasNoHudListItems));
         UpdateSelectedSessionTranscriptRefresh();
+    }
+
+    private bool IsHudVisualUpdateDeferred => _hudVisualUpdateDeferralDepth > 0;
+
+    private void FlushDeferredHudVisualUpdates()
+    {
+        var shouldSyncSessions = _hudSessionItemsRefreshPending;
+        var shouldRefreshQuestions = _hudQuestionOptionsRefreshPending;
+        var shouldRefreshAll = _hudVisualRefreshPending;
+
+        _hudSessionItemsRefreshPending = false;
+        _hudQuestionOptionsRefreshPending = false;
+        _hudVisualRefreshPending = false;
+
+        if (shouldSyncSessions)
+            SyncDeferredSessionItems();
+
+        if (shouldRefreshQuestions)
+            RefreshQuestionOptionsCore();
+
+        if (shouldRefreshAll || shouldSyncSessions)
+            RefreshAllCore();
     }
 
     private string FormatRecentMessage(string? text, string fallback)
@@ -1288,6 +1410,16 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         }
         else if (e.Key == "show_full_recent_messages")
         {
+            if (IsHudVisualUpdateDeferred)
+            {
+                foreach (var sessionId in _sessionItems.Keys)
+                    _deferredSessionItemIds.Add(sessionId);
+
+                _hudSessionItemsRefreshPending = true;
+                _hudVisualRefreshPending = true;
+                return;
+            }
+
             foreach (var item in _sessionItems.Values)
                 item.RefreshDisplay();
             RefreshAll();
