@@ -10,6 +10,7 @@ namespace CodeIsland.WpfApp.Views;
 internal sealed record HudMorphPlan(
     RectangleGeometry? Clip,
     Rect InitialRect,
+    Rect? MidRect,
     Rect FinalRect,
     Duration Duration,
     bool UseClip,
@@ -17,7 +18,9 @@ internal sealed record HudMorphPlan(
     double InitialOpacity = 0.96d,
     double InitialScale = 1d,
     double InitialClipRadius = 0d,
+    double? MidClipRadius = null,
     double FinalClipRadius = 0d,
+    TimeSpan? MidKeyTime = null,
     Rect? CompletionClipRect = null,
     double? CompletionClipRadius = null,
     bool UseSnapshotLayer = false);
@@ -79,21 +82,9 @@ internal sealed class HudMorphAnimator
 
         if (plan.UseClip && plan.Clip is not null)
         {
-            var rectAnimation = new RectAnimation(plan.FinalRect, plan.Duration)
-            {
-                EasingFunction = easing,
-                FillBehavior = FillBehavior.HoldEnd
-            };
-            var radiusXAnimation = new DoubleAnimation(plan.FinalClipRadius, plan.Duration)
-            {
-                EasingFunction = easing,
-                FillBehavior = FillBehavior.HoldEnd
-            };
-            var radiusYAnimation = new DoubleAnimation(plan.FinalClipRadius, plan.Duration)
-            {
-                EasingFunction = easing,
-                FillBehavior = FillBehavior.HoldEnd
-            };
+            var rectAnimation = CreateClipRectAnimation(plan, easing);
+            var radiusXAnimation = CreateClipRadiusAnimation(plan, easing);
+            var radiusYAnimation = CreateClipRadiusAnimation(plan, easing);
             rectAnimation.Completed += (_, _) =>
             {
                 if (ReferenceEquals(target.Clip, plan.Clip))
@@ -141,11 +132,7 @@ internal sealed class HudMorphAnimator
         translate.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0d, plan.Duration) { EasingFunction = easing, FillBehavior = FillBehavior.HoldEnd });
         translate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0d, plan.Duration) { EasingFunction = easing, FillBehavior = FillBehavior.HoldEnd });
 
-        var opacityAnimation = new DoubleAnimation(1d, plan.Duration)
-        {
-            EasingFunction = easing,
-            FillBehavior = FillBehavior.HoldEnd
-        };
+        var opacityAnimation = CreateShellOpacityAnimation(plan, easing);
         if (!plan.UseClip)
         {
             opacityAnimation.Completed += (_, _) =>
@@ -329,6 +316,55 @@ internal sealed class HudMorphAnimator
 
     private TranslateTransform GetAnimationTranslate(bool useSnapshotLayer) =>
         useSnapshotLayer ? _snapshotTranslate : _shellTranslate;
+
+    private static DoubleAnimation CreateShellOpacityAnimation(HudMorphPlan plan, IEasingFunction easing)
+    {
+        return new DoubleAnimation(1d, plan.Duration)
+        {
+            EasingFunction = easing,
+            FillBehavior = FillBehavior.HoldEnd
+        };
+    }
+
+    private static AnimationTimeline CreateClipRectAnimation(HudMorphPlan plan, IEasingFunction easing)
+    {
+        if (CanUseMidKeyFrame(plan) && plan.MidRect is { } midRect && plan.MidKeyTime is { } midKeyTime)
+        {
+            var animation = new RectAnimationUsingKeyFrames { FillBehavior = FillBehavior.HoldEnd };
+            animation.KeyFrames.Add(new LinearRectKeyFrame(midRect, KeyTime.FromTimeSpan(midKeyTime)));
+            animation.KeyFrames.Add(new LinearRectKeyFrame(plan.FinalRect, KeyTime.FromTimeSpan(plan.Duration.TimeSpan)));
+            return animation;
+        }
+
+        return new RectAnimation(plan.FinalRect, plan.Duration)
+        {
+            EasingFunction = easing,
+            FillBehavior = FillBehavior.HoldEnd
+        };
+    }
+
+    private static AnimationTimeline CreateClipRadiusAnimation(HudMorphPlan plan, IEasingFunction easing)
+    {
+        if (CanUseMidKeyFrame(plan) && plan.MidClipRadius is { } midRadius && plan.MidKeyTime is { } midKeyTime)
+        {
+            var animation = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.HoldEnd };
+            animation.KeyFrames.Add(new LinearDoubleKeyFrame(midRadius, KeyTime.FromTimeSpan(midKeyTime)));
+            animation.KeyFrames.Add(new LinearDoubleKeyFrame(plan.FinalClipRadius, KeyTime.FromTimeSpan(plan.Duration.TimeSpan)));
+            return animation;
+        }
+
+        return new DoubleAnimation(plan.FinalClipRadius, plan.Duration)
+        {
+            EasingFunction = easing,
+            FillBehavior = FillBehavior.HoldEnd
+        };
+    }
+
+    private static bool CanUseMidKeyFrame(HudMorphPlan plan) =>
+        plan.Duration.HasTimeSpan &&
+        plan.MidKeyTime is { } midKeyTime &&
+        midKeyTime > TimeSpan.Zero &&
+        midKeyTime < plan.Duration.TimeSpan;
 
     private void PrepareShellLayer()
     {
