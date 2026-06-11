@@ -26,6 +26,7 @@ public partial class SessionListView
         }
 
         var parameter = button.CommandParameter;
+        var itemId = parameter as string;
         var command = state.RemoveHudListItemCommand;
         if (!command.CanExecute(parameter) || !_removingItemRoots.Add(itemRoot))
             return;
@@ -49,6 +50,8 @@ public partial class SessionListView
 
         translate.BeginAnimation(TranslateTransform.YProperty, null);
         translate.Y = 0d;
+        var hudWindow = Window.GetWindow(this) as HudWindow;
+        hudWindow?.BeginSessionListItemExitAnimation(itemId);
 
         var storyboard = new Storyboard { FillBehavior = FillBehavior.HoldEnd };
         storyboard.Children.Add(CreateDoubleAnimation(itemRoot, OpacityProperty, 0d, HudAnimationTimings.ContentDuration, new QuadraticEase { EasingMode = EasingMode.EaseOut }));
@@ -58,10 +61,17 @@ public partial class SessionListView
         storyboard.Completed += (_, _) =>
         {
             _removingItemRoots.Remove(itemRoot);
-            if (command.CanExecute(parameter))
-                command.Execute(parameter);
-            else
-                ResetRemovedItemAnimation(itemRoot, startMargin, translate);
+            try
+            {
+                if (command.CanExecute(parameter))
+                    command.Execute(parameter);
+                else
+                    ResetRemovedItemAnimation(itemRoot, startMargin, translate);
+            }
+            finally
+            {
+                hudWindow?.CompleteSessionListItemExitAnimation(itemId);
+            }
         };
         storyboard.Begin();
     }

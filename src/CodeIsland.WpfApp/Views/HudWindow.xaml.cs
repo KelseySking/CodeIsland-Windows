@@ -76,6 +76,7 @@ public partial class HudWindow : Window
     private readonly DispatcherTimer _pendingAutoCollapseTimer;
     private readonly DispatcherTimer _transitionGraceTimer;
     private readonly DispatcherTimer _fullscreenTimer;
+    private readonly DispatcherTimer _deferredSessionListShrinkTimer;
     private Type? _currentSurfaceType;
     private Type? _currentPendingType;
     private string? _currentPendingKey;
@@ -91,6 +92,9 @@ public partial class HudWindow : Window
     private PhysicalWindowRect? _lastAppliedPhysicalRect;
     private int _shellTransitionId;
     private bool _shellTransitionDefersHudVisualUpdates;
+    private readonly HashSet<string> _exitingHudListItemIds = new(StringComparer.Ordinal);
+    private bool _deferredSessionListShrinkReady;
+    private bool _sessionListItemExitCompleted;
 
     public HudWindow(WpfAppState state, SettingsManager settings)
     {
@@ -146,6 +150,14 @@ public partial class HudWindow : Window
             _transitionGraceTimer.Stop();
             _shellTransitionGraceActive = false;
             ScheduleCloseAfterTransitionIfNeeded();
+        };
+
+        _deferredSessionListShrinkTimer = new DispatcherTimer();
+        _deferredSessionListShrinkTimer.Tick += (_, _) =>
+        {
+            _deferredSessionListShrinkTimer.Stop();
+            _deferredSessionListShrinkReady = true;
+            QueueRender();
         };
 
         _fullscreenTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -311,9 +323,31 @@ public partial class HudWindow : Window
 
         var targetLayout = CalculateWindowLayout();
         var transitionKind = ResolveShellTransitionKind(previousLayout, targetLayout);
+        var shouldDeferNonTopSessionListShrink = ShouldDeferNonTopSessionListShrink(previousSurfaceType, next, transitionKind);
+        if (shouldDeferNonTopSessionListShrink)
+        {
+            ApplyRenderedState(next, expectedPendingExpanded, animationSettings);
+            ScheduleDeferredSessionListShrink(animationSettings.SurfaceDuration);
+            return;
+        }
+
+        var shouldAnimateNonTopSessionListShrinkBounds = ShouldAnimateNonTopSessionListShrinkBounds(previousSurfaceType, next, transitionKind);
+        if (!shouldAnimateNonTopSessionListShrinkBounds)
+            CancelDeferredSessionListShrink();
+
         var sessionListLayoutChanged = ShouldAnimateSessionListLayoutChange(previousSurfaceType, next, transitionKind);
         var shouldRunShellTransition = surfaceChanged || pendingExpandedChanged || sessionListLayoutChanged;
-        var duration = surfaceChanged || sessionListLayoutChanged ? animationSettings.SurfaceDuration : animationSettings.PendingDuration;
+        var duration = surfaceChanged || sessionListLayoutChanged || shouldAnimateNonTopSessionListShrinkBounds
+            ? animationSettings.SurfaceDuration
+            : animationSettings.PendingDuration;
+        if (shouldAnimateNonTopSessionListShrinkBounds)
+        {
+            CancelDeferredSessionListShrink();
+            ApplyRenderedState(next, expectedPendingExpanded, animationSettings);
+            StartWindowBoundsTransition(previousLayout, targetLayout, duration);
+            return;
+        }
+
         if (shouldRunShellTransition && transitionKind == ShellTransitionKind.Shrink)
         {
             var useSnapshotLayer = !sessionListLayoutChanged;
@@ -525,10 +559,85 @@ public partial class HudWindow : Window
 
     private static HudAnimationSettings GetHudAnimationSettings() => HudAnimationSettings.ForCurrentRenderer();
 
-    private static bool ShouldAnimateSessionListLayoutChange(Type? previousSurfaceType, Type nextSurfaceType, ShellTransitionKind transitionKind) =>
+    private bool ShouldAnimateSessionListLayoutChange(Type? previousSurfaceType, Type nextSurfaceType, ShellTransitionKind transitionKind)
+    {
+        if (previousSurfaceType != typeof(SessionListView) ||
+            nextSurfaceType != typeof(SessionListView) ||
+            transitionKind == ShellTransitionKind.SameSize)
+        {
+            return false;
+        }
+
+        return transitionKind == ShellTransitionKind.Expand || IsTopDisplayPosition();
+    }
+
+    private bool ShouldDeferNonTopSessionListShrink(Type? previousSurfaceType, Type nextSurfaceType, ShellTransitionKind transitionKind) =>
+        IsNonTopSessionListShrink(previousSurfaceType, nextSurfaceType, transitionKind) &&
+        !_deferredSessionListShrinkReady &&
+        !_sessionListItemExitCompleted;
+
+    private bool ShouldAnimateNonTopSessionListShrinkBounds(Type? previousSurfaceType, Type nextSurfaceType, ShellTransitionKind transitionKind) =>
+        IsNonTopSessionListShrink(previousSurfaceType, nextSurfaceType, transitionKind) &&
+        (_deferredSessionListShrinkReady || _sessionListItemExitCompleted);
+
+    private bool IsNonTopSessionListShrink(Type? previousSurfaceType, Type nextSurfaceType, ShellTransitionKind transitionKind) =>
         previousSurfaceType == typeof(SessionListView) &&
         nextSurfaceType == typeof(SessionListView) &&
-        transitionKind != ShellTransitionKind.SameSize;
+        transitionKind == ShellTransitionKind.Shrink &&
+        !IsTopDisplayPosition();
+
+    private void ScheduleDeferredSessionListShrink(Duration duration)
+    {
+        _deferredSessionListShrinkReady = false;
+        _deferredSessionListShrinkTimer.Stop();
+
+        if (!duration.HasTimeSpan || duration.TimeSpan <= TimeSpan.Zero)
+        {
+            _deferredSessionListShrinkReady = true;
+            QueueRender();
+            return;
+        }
+
+        _deferredSessionListShrinkTimer.Interval = duration.TimeSpan;
+        _deferredSessionListShrinkTimer.Start();
+    }
+
+    private void CancelDeferredSessionListShrink()
+    {
+        _deferredSessionListShrinkTimer.Stop();
+        _deferredSessionListShrinkReady = false;
+        _sessionListItemExitCompleted = false;
+    }
+
+    internal void BeginSessionListItemExitAnimation(string? itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+            return;
+
+        if (IsTopDisplayPosition() && _exitingHudListItemIds.Add(itemId))
+            QueueRenderAfterSessionListExitStateChanged();
+    }
+
+    internal void CompleteSessionListItemExitAnimation(string? itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+            return;
+
+        _sessionListItemExitCompleted = true;
+        if (_exitingHudListItemIds.Remove(itemId))
+            QueueRenderAfterSessionListExitStateChanged();
+    }
+
+    private void QueueRenderAfterSessionListExitStateChanged()
+    {
+        if (IsShellTransitionProtected())
+        {
+            _renderAfterShellTransition = true;
+            return;
+        }
+
+        QueueRender();
+    }
 
     private void SetPendingLayerExpanded(bool expanded)
     {
@@ -754,6 +863,69 @@ public partial class HudWindow : Window
         UpdateWindowBounds();
         if (plan is not null)
             StartPreparedShellTransition(plan);
+    }
+
+    private void StartWindowBoundsTransition(WindowLayout previousLayout, WindowLayout targetLayout, Duration duration)
+    {
+        _morphAnimator.Stop(clearClip: true);
+        var transitionId = BeginShellTransitionProtection();
+        if (!duration.HasTimeSpan ||
+            duration.TimeSpan <= TimeSpan.Zero ||
+            previousLayout.Width <= 0 ||
+            previousLayout.Height <= 0 ||
+            targetLayout.Width <= 0 ||
+            targetLayout.Height <= 0)
+        {
+            ApplyWindowContentLayout(targetLayout);
+            ApplyWindowLayout(targetLayout);
+            Shell.UpdateLayout();
+            CompleteShellTransitionProtection(transitionId);
+            return;
+        }
+
+        ClearWindowLayoutAnimations();
+        Width = previousLayout.Width;
+        Height = previousLayout.Height;
+        Left = previousLayout.Left;
+        Top = previousLayout.Top;
+
+        ApplyWindowContentLayout(targetLayout);
+        Shell.UpdateLayout();
+
+        var heightAnimation = CreateWindowBoundsAnimation(targetLayout.Height, duration);
+        heightAnimation.Completed += (_, _) => CompleteWindowBoundsTransition(transitionId, targetLayout);
+
+        BeginAnimation(WidthProperty, CreateWindowBoundsAnimation(targetLayout.Width, duration));
+        BeginAnimation(HeightProperty, heightAnimation);
+        BeginAnimation(LeftProperty, CreateWindowBoundsAnimation(targetLayout.Left, duration));
+        BeginAnimation(TopProperty, CreateWindowBoundsAnimation(targetLayout.Top, duration));
+    }
+
+    private void CompleteWindowBoundsTransition(int transitionId, WindowLayout targetLayout)
+    {
+        if (transitionId != _shellTransitionId)
+            return;
+
+        ClearWindowLayoutAnimations();
+        ApplyWindowContentLayout(targetLayout);
+        ApplyWindowLayout(targetLayout);
+        Shell.UpdateLayout();
+        CompleteShellTransitionProtection(transitionId);
+    }
+
+    private static DoubleAnimation CreateWindowBoundsAnimation(double to, Duration duration) =>
+        new(to, duration)
+        {
+            EasingFunction = new HudShellMorphEase(),
+            FillBehavior = FillBehavior.HoldEnd
+        };
+
+    private void ClearWindowLayoutAnimations()
+    {
+        BeginAnimation(WidthProperty, null);
+        BeginAnimation(HeightProperty, null);
+        BeginAnimation(LeftProperty, null);
+        BeginAnimation(TopProperty, null);
     }
 
     private void StartPreparedShellTransition(ShellTransitionPlan? plan)
@@ -1107,14 +1279,14 @@ public partial class HudWindow : Window
 
     private double CalculateSessionListHeight(double maxSurfaceHeight)
     {
-        var itemCount = _state.HudListItems.Count;
+        var itemCount = CountEffectiveHudListItems();
         if (itemCount <= 0)
             return Math.Clamp(120d, 104d, maxSurfaceHeight);
 
         var compactHud = IsCompactHudMode();
         var visibleCardCount = Math.Min(itemCount, compactHud ? 3 : 4);
         var visibleGroupCount = CountVisibleHudListGroups(visibleCardCount);
-        var inlineDetailHeight = _state.HasExpandedHudListSessionDetail ? HudAnimationTimings.InlineSessionDetailHeight : 0d;
+        var inlineDetailHeight = HasEffectiveExpandedHudListSessionDetail() ? HudAnimationTimings.InlineSessionDetailHeight : 0d;
         var desiredHeight = compactHud
             ? 74d + visibleGroupCount * 30d + visibleCardCount * 72d + inlineDetailHeight
             : 88d + visibleGroupCount * 34d + visibleCardCount * 84d + inlineDetailHeight;
@@ -1130,6 +1302,22 @@ public partial class HudWindow : Window
         };
     }
 
+    private int CountEffectiveHudListItems()
+    {
+        if (_exitingHudListItemIds.Count == 0)
+            return _state.HudListItems.Count;
+
+        return _state.HudListItems.Count(item => !_exitingHudListItemIds.Contains(item.ItemId));
+    }
+
+    private bool HasEffectiveExpandedHudListSessionDetail()
+    {
+        if (!_state.HasExpandedHudListSessionDetail)
+            return false;
+
+        return _state.SelectedHudItem is not { } item || !_exitingHudListItemIds.Contains(item.ItemId);
+    }
+
     private int CountVisibleHudListGroups(int visibleCardCount)
     {
         var remainingCards = visibleCardCount;
@@ -1140,14 +1328,23 @@ public partial class HudWindow : Window
             if (remainingCards <= 0)
                 break;
 
-            if (group.Items.Count == 0)
+            var groupItemCount = CountEffectiveHudListGroupItems(group);
+            if (groupItemCount == 0)
                 continue;
 
             visibleGroupCount++;
-            remainingCards -= Math.Min(group.Items.Count, remainingCards);
+            remainingCards -= Math.Min(groupItemCount, remainingCards);
         }
 
         return visibleGroupCount;
+    }
+
+    private int CountEffectiveHudListGroupItems(WpfHudListGroupViewModel group)
+    {
+        if (_exitingHudListItemIds.Count == 0)
+            return group.Items.Count;
+
+        return group.Items.Count(item => !_exitingHudListItemIds.Contains(item.ItemId));
     }
 
     private (double Width, double Height) CalculatePendingSize(double availableContentHeight)
@@ -1279,6 +1476,8 @@ public partial class HudWindow : Window
 
     private bool IsSideCenterPosition() =>
         WpfHudDisplayPosition.IsSideCenter(_settings.Get("display_position", WpfHudDisplayPosition.Default));
+    private bool IsTopDisplayPosition() =>
+        WpfHudDisplayPosition.Normalize(_settings.Get("display_position", WpfHudDisplayPosition.Default)) == WpfHudDisplayPosition.TopCenter;
     private bool UseSideCollapsedLayout() => IsSideCenterPosition() && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded;
 
     private bool IsPointerInsideHudWindowBounds()
@@ -1416,7 +1615,9 @@ public partial class HudWindow : Window
         _hoverCloseTimer.Stop();
         _pendingAutoCollapseTimer.Stop();
         _transitionGraceTimer.Stop();
+        _deferredSessionListShrinkTimer.Stop();
         _fullscreenTimer.Stop();
+        ClearWindowLayoutAnimations();
         MouseEnter -= OnMouseEnter;
         MouseLeave -= OnMouseLeave;
         PendingHost.MouseEnter -= OnPendingHostMouseEnter;
