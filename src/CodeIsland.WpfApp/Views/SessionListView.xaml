@@ -4,6 +4,17 @@
              xmlns:views="clr-namespace:CodeIsland.WpfApp.Views"
              VerticalAlignment="Stretch"
              UseLayoutRounding="True">
+  <UserControl.Resources>
+    <Style x:Key="HudSideActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="Padding" Value="8,3" />
+      <Setter Property="Background" Value="#14FFFFFF" />
+      <Setter Property="Foreground" Value="#E6FFFFFF" />
+      <Setter Property="BorderBrush" Value="#2AFFFFFF" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+  </UserControl.Resources>
   <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ClipToBounds="True">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
@@ -30,7 +41,7 @@
 
     <TextBlock Grid.Row="1" Text="暂无任务" FontSize="12" Foreground="#80FFFFFF" HorizontalAlignment="Center" Margin="0,18" Visibility="{Binding HasNoHudListItems, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
 
-    <ScrollViewer Grid.Row="2" Margin="0,10,0,0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Visibility="{Binding HasHudListItems, Converter={x:Static views:BoolVisibilityConverter.Instance}}" ClipToBounds="True">
+    <ScrollViewer Grid.Row="2" Margin="0,10,0,0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden" Visibility="{Binding HasHudListItems, Converter={x:Static views:BoolVisibilityConverter.Instance}}" ClipToBounds="True">
       <ItemsControl ItemsSource="{Binding HudListGroups}">
         <ItemsControl.ItemTemplate>
           <DataTemplate>
@@ -97,14 +108,33 @@
                               <TextBlock x:Name="SummaryText" Text="{Binding Summary}" FontSize="11" Foreground="#D9FFFFFF" Margin="0,8,0,0" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="34" ToolTip="{Binding Summary}" />
 
                               <TextBlock x:Name="TitleText" Text="{Binding Title}" FontSize="10" Foreground="#8FFFFFFF" Margin="0,7,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}" />
+
+                              <Grid x:Name="InlineDetailPanel" Height="0" Opacity="0" ClipToBounds="True">
+                                <Grid.RowDefinitions>
+                                  <RowDefinition Height="Auto" />
+                                  <RowDefinition Height="Auto" />
+                                  <RowDefinition Height="48" />
+                                  <RowDefinition Height="Auto" />
+                                  <RowDefinition Height="74" />
+                                </Grid.RowDefinitions>
+                                <Border Grid.Row="0" Height="1" Background="#14FFFFFF" Margin="0,10,0,8" />
+                                <TextBlock Grid.Row="1" Text="用户问题" FontSize="10" FontWeight="SemiBold" Foreground="#80FFFFFF" />
+                                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Margin="0,3,0,0" CanContentScroll="False" PanningMode="VerticalOnly">
+                                  <TextBlock Text="{Binding DetailUserPrompt}" FontSize="11" Foreground="#E6FFFFFF" TextWrapping="Wrap" />
+                                </ScrollViewer>
+                                <TextBlock Grid.Row="3" Text="AI 回复" FontSize="10" FontWeight="SemiBold" Foreground="#80FFFFFF" Margin="0,10,0,0" />
+                                <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Margin="0,3,0,0" CanContentScroll="False" PanningMode="VerticalOnly">
+                                  <TextBlock Text="{Binding DetailAssistantReply}" FontSize="11" Foreground="#F2FFFFFF" TextWrapping="Wrap" />
+                                </ScrollViewer>
+                              </Grid>
                             </StackPanel>
                           </Grid>
                         </Border>
                       </Button>
 
                       <StackPanel x:Name="SideActions" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="{Binding HasSideActions, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
-                        <Button x:Name="JumpButton" Content="跳转" Command="{Binding DataContext.JumpToTerminalCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding SessionId}" FontSize="10" Padding="8,3" Margin="0,0,0,6" Background="#14FFFFFF" Foreground="#E6FFFFFF" BorderBrush="#2AFFFFFF" Visibility="{Binding CanJumpToTerminal, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
-                        <Button x:Name="RemoveButton" Content="移除" Command="{Binding DataContext.RemoveHudListItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding ItemId}" FontSize="10" Padding="8,3" Background="#12FFFFFF" Foreground="#D9FFFFFF" BorderBrush="#22000000" Visibility="{Binding CanRemoveFromHudList, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+                        <Button x:Name="JumpButton" Content="跳转" Command="{Binding DataContext.JumpToTerminalCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding SessionId}" Style="{StaticResource HudSideActionButtonStyle}" Margin="0,0,0,6" Visibility="{Binding CanJumpToTerminal, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+                        <Button x:Name="RemoveButton" Content="移除" Command="{Binding DataContext.RemoveHudListItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding ItemId}" Style="{StaticResource HudSideActionButtonStyle}" Visibility="{Binding CanRemoveFromHudList, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
                       </StackPanel>
                     </Grid>
                     <DataTemplate.Triggers>
@@ -126,11 +156,48 @@
                         <Setter TargetName="SummaryText" Property="Margin" Value="0,5,0,0" />
                         <Setter TargetName="SummaryText" Property="MaxHeight" Value="24" />
                         <Setter TargetName="TitleText" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="InlineDetailPanel" Property="Margin" Value="0,0,0,0" />
                         <Setter TargetName="SideActions" Property="Margin" Value="6,0,0,0" />
                         <Setter TargetName="JumpButton" Property="FontSize" Value="9" />
                         <Setter TargetName="JumpButton" Property="Padding" Value="7,2" />
                         <Setter TargetName="RemoveButton" Property="FontSize" Value="9" />
                         <Setter TargetName="RemoveButton" Property="Padding" Value="7,2" />
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                        <Setter TargetName="CardChrome" Property="BorderBrush" Value="#448EE6D0" />
+                        <Setter TargetName="CardChrome" Property="Background" Value="#FF07080D" />
+                        <DataTrigger.EnterActions>
+                          <BeginStoryboard>
+                            <Storyboard>
+                              <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="Height" To="186" Duration="{x:Static views:HudAnimationTimings.SurfaceDuration}">
+                                <DoubleAnimation.EasingFunction>
+                                  <CubicEase EasingMode="EaseOut" />
+                                </DoubleAnimation.EasingFunction>
+                              </DoubleAnimation>
+                              <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="Opacity" To="1" Duration="{x:Static views:HudAnimationTimings.ContentDuration}" BeginTime="{x:Static views:HudAnimationTimings.ContentFadeInDelay}">
+                                <DoubleAnimation.EasingFunction>
+                                  <QuadraticEase EasingMode="EaseOut" />
+                                </DoubleAnimation.EasingFunction>
+                              </DoubleAnimation>
+                            </Storyboard>
+                          </BeginStoryboard>
+                        </DataTrigger.EnterActions>
+                        <DataTrigger.ExitActions>
+                          <BeginStoryboard>
+                            <Storyboard>
+                              <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="Height" To="0" Duration="{x:Static views:HudAnimationTimings.SurfaceDuration}">
+                                <DoubleAnimation.EasingFunction>
+                                  <CubicEase EasingMode="EaseOut" />
+                                </DoubleAnimation.EasingFunction>
+                              </DoubleAnimation>
+                              <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="Opacity" To="0" Duration="{x:Static views:HudAnimationTimings.ContentDuration}" BeginTime="{x:Static views:HudAnimationTimings.ContentFadeOutTrailingDelay}">
+                                <DoubleAnimation.EasingFunction>
+                                  <QuadraticEase EasingMode="EaseIn" />
+                                </DoubleAnimation.EasingFunction>
+                              </DoubleAnimation>
+                            </Storyboard>
+                          </BeginStoryboard>
+                        </DataTrigger.ExitActions>
                       </DataTrigger>
                     </DataTemplate.Triggers>
                   </DataTemplate>

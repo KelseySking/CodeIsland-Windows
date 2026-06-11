@@ -58,7 +58,7 @@
           </Grid.RowDefinitions>
           <TextBlock Grid.Row="0" Text="最近消息" FontSize="10" Foreground="#80FFFFFF" />
           <TextBlock Grid.Row="1" Text="用户问题" FontSize="10" Foreground="#80FFFFFF" Margin="0,8,0,0" />
-          <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,3,0,0" ClipToBounds="True">
+          <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Margin="0,3,0,0" ClipToBounds="True">
             <TextBlock Text="{Binding DetailUserPrompt}" FontSize="12" Foreground="#E6FFFFFF" TextWrapping="Wrap" />
           </ScrollViewer>
         </Grid>
@@ -71,7 +71,7 @@
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
           <TextBlock Grid.Row="0" Text="{Binding DetailAssistantReplyTitle}" FontSize="10" Foreground="#80FFFFFF" />
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,3,0,0" ClipToBounds="True">
+          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Margin="0,3,0,0" ClipToBounds="True">
             <TextBlock Text="{Binding DetailAssistantReply}" FontSize="12" Foreground="#F2FFFFFF" TextWrapping="Wrap" />
           </ScrollViewer>
         </Grid>

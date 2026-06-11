@@ -54,7 +54,7 @@
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
           <TextBlock Grid.Row="0" Text="你的提问" FontSize="10" Foreground="#80FFFFFF" />
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,6,0,0" ClipToBounds="True">
+          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Margin="0,6,0,0" ClipToBounds="True">
             <TextBlock Text="{Binding CompletionUserPrompt}" FontSize="12" Foreground="#F2FFFFFF" TextWrapping="Wrap" />
           </ScrollViewer>
         </Grid>
@@ -67,7 +67,7 @@
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
           <TextBlock Grid.Row="0" Text="AI 回复" FontSize="10" Foreground="#80FFFFFF" />
-          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0" ClipToBounds="True">
+          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden" Margin="0,6,0,0" ClipToBounds="True">
             <TextBlock Text="{Binding CompletionText}" FontSize="12" Foreground="#E6FFFFFF" TextWrapping="Wrap" />
           </ScrollViewer>
         </Grid>

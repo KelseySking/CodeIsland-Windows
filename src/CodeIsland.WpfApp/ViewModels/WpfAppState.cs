@@ -200,6 +200,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     public WpfSessionItemViewModel? SelectedSession => _selectedSessionId != null && _sessionItems.TryGetValue(_selectedSessionId, out var item) ? item : null;
     public WpfHudListItemViewModel? SelectedHudItem => _selectedHudItemId != null ? HudListItems.FirstOrDefault(item => item.ItemId == _selectedHudItemId) : null;
+    public bool HasExpandedHudListSessionDetail => SurfaceKind == WpfHudSurfaceKind.SessionList && SelectedHudItem?.CanShowInlineSessionDetail == true;
     public bool IsSelectedPermissionDetail => SelectedHudItem?.Kind == WpfHudListItemKind.Permission;
     public bool IsSelectedQuestionDetail => SelectedHudItem?.Kind == WpfHudListItemKind.Question;
     public bool IsSelectedSessionDetail => !IsSelectedPermissionDetail && !IsSelectedQuestionDetail;
@@ -302,9 +303,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         if (SelectedSnapshot is not { } session)
             return null;
 
-        return session.Status is AgentStatus.Processing or AgentStatus.Running
-            ? session.LastAssistantMessage ?? session.CompletionText
-            : session.CompletionText ?? session.LastAssistantMessage;
+        return GetSessionAssistantReply(session);
     }
 
     public async Task<string> HandleBlockingEventAsync(HookEvent evt, CancellationToken ct)
@@ -402,13 +401,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     public void OpenSession(string? sessionId)
     {
         if (string.IsNullOrWhiteSpace(sessionId)) return;
-        _selectedSessionId = sessionId;
-        _selectedHudItemId = $"session:{sessionId}";
-        _selectedPendingActionId = null;
-        _selectedPendingActionKind = null;
-        SurfaceKind = WpfHudSurfaceKind.HudDetail;
-        RefreshQuestionOptions();
-        RefreshAll();
+        OpenInlineSessionDetail($"session:{sessionId}", sessionId);
     }
 
     private void OpenHudListItem(string? itemId)
@@ -416,6 +409,12 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         if (string.IsNullOrWhiteSpace(itemId)) return;
         var item = HudListItems.FirstOrDefault(candidate => candidate.ItemId == itemId);
         if (item == null) return;
+
+        if (item.CanShowInlineSessionDetail)
+        {
+            OpenInlineSessionDetail(item.ItemId, item.SessionId);
+            return;
+        }
 
         _selectedHudItemId = item.ItemId;
         _selectedSessionId = item.SessionId;
@@ -429,6 +428,24 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         QuestionAnswer = "";
         RefreshQuestionOptions();
         RefreshAll();
+    }
+
+    private void OpenInlineSessionDetail(string itemId, string? sessionId)
+    {
+        var collapseCurrent = SurfaceKind == WpfHudSurfaceKind.SessionList &&
+            string.Equals(_selectedHudItemId, itemId, StringComparison.Ordinal);
+
+        _selectedHudItemId = collapseCurrent ? null : itemId;
+        _selectedSessionId = sessionId;
+        _selectedPendingActionId = null;
+        _selectedPendingActionKind = null;
+        SurfaceKind = WpfHudSurfaceKind.SessionList;
+        UpdateExpandedHudListItems();
+        RefreshQuestionOptions();
+        OnPropertyChanged(nameof(SelectedHudItemId));
+        OnPropertyChanged(nameof(SelectedHudItem));
+        OnPropertyChanged(nameof(HasExpandedHudListSessionDetail));
+        UpdateSelectedSessionTranscriptRefresh();
     }
 
     private void RemoveHudListItem(string? itemId)
@@ -463,6 +480,10 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     public void Collapse()
     {
+        _selectedHudItemId = null;
+        _selectedPendingActionId = null;
+        _selectedPendingActionKind = null;
+        UpdateExpandedHudListItems();
         SurfaceKind = WpfHudSurfaceKind.Collapsed;
         RefreshAll();
     }
@@ -1040,7 +1061,10 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
                 vm.Status,
                 kind == WpfHudListItemKind.Completed ? "#FF8EE6D0" : "#FF7AB8FF",
                 vm.TimeText,
-                OpenHudListItemCommand));
+                OpenHudListItemCommand,
+                FormatSessionUserPrompt(session),
+                FormatSessionAssistantReply(session),
+                SurfaceKind == WpfHudSurfaceKind.SessionList && string.Equals(_selectedHudItemId, $"session:{vm.SessionId}", StringComparison.Ordinal)));
         }
 
         var sortedItems = items
@@ -1059,6 +1083,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             HudListItems.Add(item);
 
         RebuildHudListGroups(sortedItems);
+        UpdateExpandedHudListItems();
     }
 
     private void RebuildHudListGroups(IReadOnlyList<WpfHudListItemViewModel> sortedItems)
@@ -1102,6 +1127,48 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         if (age.TotalHours >= 1) return $"等待 {(int)age.TotalHours}h";
         if (age.TotalMinutes >= 1) return $"等待 {(int)age.TotalMinutes}m";
         return $"等待 {Math.Max(0, (int)age.TotalSeconds)}s";
+    }
+
+    private string FormatSessionUserPrompt(SessionSnapshot? session) =>
+        FormatRecentMessage(session?.LastUserPrompt, "暂无用户问题");
+
+    private string FormatSessionAssistantReply(SessionSnapshot? session)
+    {
+        var source = session == null ? "AI" : SupportedSource.GetDisplayName(session.Source);
+        return FormatRecentMessage(GetSessionAssistantReply(session), $"暂无 {source} 回复");
+    }
+
+    private static string? GetSessionAssistantReply(SessionSnapshot? session)
+    {
+        if (session == null)
+            return null;
+
+        return session.Status is AgentStatus.Processing or AgentStatus.Running
+            ? session.LastAssistantMessage ?? session.CompletionText
+            : session.CompletionText ?? session.LastAssistantMessage;
+    }
+
+    private void UpdateExpandedHudListItems()
+    {
+        foreach (var item in HudListItems)
+        {
+            item.IsExpanded = SurfaceKind == WpfHudSurfaceKind.SessionList &&
+                item.CanShowInlineSessionDetail &&
+                string.Equals(item.ItemId, _selectedHudItemId, StringComparison.Ordinal);
+        }
+    }
+
+    private bool TryUpdateExpandedInlineSessionDetail(string sessionId, SessionSnapshot session)
+    {
+        if (SurfaceKind != WpfHudSurfaceKind.SessionList ||
+            !string.Equals(_selectedSessionId, sessionId, StringComparison.Ordinal) ||
+            SelectedHudItem is not { CanShowInlineSessionDetail: true } selectedItem)
+        {
+            return false;
+        }
+
+        selectedItem.UpdateInlineDetail(FormatSessionUserPrompt(session), FormatSessionAssistantReply(session));
+        return true;
     }
 
     private static string BuildPermissionSummary(PermissionRequest request)
@@ -1199,6 +1266,12 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
         _sessions[sessionId] = refreshed;
         SyncSessionItem(sessionId, refreshed);
+        if (TryUpdateExpandedInlineSessionDetail(sessionId, refreshed))
+        {
+            UpdateSelectedSessionTranscriptRefresh();
+            return true;
+        }
+
         RefreshAll();
         return true;
     }
@@ -1208,7 +1281,10 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         sessionId = "";
         session = null!;
 
-        if (SurfaceKind != WpfHudSurfaceKind.HudDetail || !IsSelectedSessionDetail || string.IsNullOrWhiteSpace(_selectedSessionId))
+        var selectedSessionDetailVisible =
+            (SurfaceKind == WpfHudSurfaceKind.HudDetail && IsSelectedSessionDetail) ||
+            (SurfaceKind == WpfHudSurfaceKind.SessionList && SelectedHudItem?.CanShowInlineSessionDetail == true);
+        if (!selectedSessionDetailVisible || string.IsNullOrWhiteSpace(_selectedSessionId))
             return false;
 
         if (!_sessions.TryGetValue(_selectedSessionId, out var selectedSession))
@@ -1305,6 +1381,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(DetailToolText));
         OnPropertyChanged(nameof(HasHudListItems));
         OnPropertyChanged(nameof(HasNoHudListItems));
+        OnPropertyChanged(nameof(HasExpandedHudListSessionDetail));
         UpdateSelectedSessionTranscriptRefresh();
     }
 

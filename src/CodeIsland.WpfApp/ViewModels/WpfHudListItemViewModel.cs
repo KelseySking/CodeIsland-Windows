@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using CodeIsland.Core.Models;
 
@@ -11,8 +13,12 @@ public enum WpfHudListItemKind
     Completed
 }
 
-public sealed class WpfHudListItemViewModel
+public sealed class WpfHudListItemViewModel : INotifyPropertyChanged
 {
+    private bool _isExpanded;
+    private string _detailUserPrompt;
+    private string _detailAssistantReply;
+
     public WpfHudListItemViewModel(
         string itemId,
         WpfHudListItemKind kind,
@@ -26,7 +32,10 @@ public sealed class WpfHudListItemViewModel
         AgentStatus status,
         string accentBrush,
         string timeText,
-        ICommand openDetailCommand)
+        ICommand openDetailCommand,
+        string detailUserPrompt = "",
+        string detailAssistantReply = "",
+        bool isExpanded = false)
     {
         ItemId = itemId;
         Kind = kind;
@@ -41,6 +50,9 @@ public sealed class WpfHudListItemViewModel
         AccentBrush = accentBrush;
         TimeText = timeText;
         OpenDetailCommand = openDetailCommand;
+        _detailUserPrompt = detailUserPrompt;
+        _detailAssistantReply = detailAssistantReply;
+        _isExpanded = isExpanded && CanShowInlineSessionDetail;
     }
 
     public string ItemId { get; }
@@ -56,8 +68,56 @@ public sealed class WpfHudListItemViewModel
     public string AccentBrush { get; }
     public string TimeText { get; }
     public ICommand OpenDetailCommand { get; }
+    public string DetailUserPrompt
+    {
+        get => _detailUserPrompt;
+        private set
+        {
+            if (_detailUserPrompt == value)
+                return;
+
+            _detailUserPrompt = value;
+            OnPropertyChanged();
+        }
+    }
+    public string DetailAssistantReply
+    {
+        get => _detailAssistantReply;
+        private set
+        {
+            if (_detailAssistantReply == value)
+                return;
+
+            _detailAssistantReply = value;
+            OnPropertyChanged();
+        }
+    }
     public bool HasSession => !string.IsNullOrWhiteSpace(SessionId);
     public bool CanJumpToTerminal => Kind is WpfHudListItemKind.Running or WpfHudListItemKind.Completed && HasSession;
     public bool CanRemoveFromHudList => Kind is WpfHudListItemKind.Running or WpfHudListItemKind.Completed && HasSession;
     public bool HasSideActions => CanJumpToTerminal || CanRemoveFromHudList;
+    public bool CanShowInlineSessionDetail => Kind is WpfHudListItemKind.Running or WpfHudListItemKind.Completed && HasSession;
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            var next = value && CanShowInlineSessionDetail;
+            if (_isExpanded == next)
+                return;
+
+            _isExpanded = next;
+            OnPropertyChanged();
+        }
+    }
+
+    public void UpdateInlineDetail(string userPrompt, string assistantReply)
+    {
+        DetailUserPrompt = userPrompt;
+        DetailAssistantReply = assistantReply;
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }

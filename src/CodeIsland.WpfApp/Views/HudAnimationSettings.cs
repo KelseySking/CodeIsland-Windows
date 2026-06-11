@@ -36,3 +36,29 @@ internal readonly record struct HudAnimationSettings(
         return tier >= 2 ? Default : LowTierRenderer;
     }
 }
+
+public static class HudAnimationTimings
+{
+    private static HudAnimationSettings Current => HudAnimationSettings.ForCurrentRenderer();
+
+    public static Duration SurfaceDuration => Current.SurfaceDuration;
+
+    public static Duration ContentDuration => Current.ContentDuration;
+
+    public static TimeSpan ContentFadeInDelay => TimeSpan.FromMilliseconds(45);
+
+    public static TimeSpan ContentFadeOutTrailingDelay
+    {
+        get
+        {
+            var surfaceDuration = SurfaceDuration;
+            var contentDuration = ContentDuration;
+            if (!surfaceDuration.HasTimeSpan || !contentDuration.HasTimeSpan)
+                return TimeSpan.Zero;
+
+            return surfaceDuration.TimeSpan > contentDuration.TimeSpan
+                ? surfaceDuration.TimeSpan - contentDuration.TimeSpan
+                : TimeSpan.Zero;
+        }
+    }
+}

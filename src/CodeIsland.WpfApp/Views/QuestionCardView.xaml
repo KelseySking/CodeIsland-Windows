@@ -61,14 +61,14 @@
             <TextBlock Text="{Binding QuestionHeader}" FontSize="11" FontWeight="SemiBold" Foreground="#BFDCEBFF" TextTrimming="CharacterEllipsis" Visibility="{Binding HasQuestionHeader, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
             <TextBlock Grid.Column="1" Text="{Binding QuestionProgressText}" FontSize="10" Foreground="#80FFFFFF" Visibility="{Binding HasQuestionProgress, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
           </Grid>
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,5,0,0" ClipToBounds="True">
+          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Margin="0,5,0,0" ClipToBounds="True">
             <TextBlock Text="{Binding QuestionText}" FontSize="12" Foreground="#F2FFFFFF" TextWrapping="Wrap" />
           </ScrollViewer>
         </Grid>
       </Border>
 
       <Grid Grid.Row="3" Margin="0,10,0,0" ClipToBounds="True">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding HasSingleSelectOptions, Converter={x:Static views:BoolVisibilityConverter.Instance}}" ClipToBounds="True">
+        <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding HasSingleSelectOptions, Converter={x:Static views:BoolVisibilityConverter.Instance}}" ClipToBounds="True">
           <ItemsControl ItemsSource="{Binding QuestionOptions}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
@@ -83,7 +83,7 @@
           </ItemsControl>
         </ScrollViewer>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding HasMultiSelectOptions, Converter={x:Static views:BoolVisibilityConverter.Instance}}" ClipToBounds="True">
+        <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding HasMultiSelectOptions, Converter={x:Static views:BoolVisibilityConverter.Instance}}" ClipToBounds="True">
           <ItemsControl ItemsSource="{Binding QuestionOptions}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
@@ -98,7 +98,7 @@
           </ItemsControl>
         </ScrollViewer>
 
-        <TextBox Text="{Binding QuestionAnswer, UpdateSourceTrigger=PropertyChanged}" FontSize="12" Foreground="#FFFFFF" Background="#0DFFFFFF" BorderBrush="#22000000" BorderThickness="1" Padding="10,7" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Visibility="{Binding ShouldShowAnswerTextBox, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+        <TextBox Text="{Binding QuestionAnswer, UpdateSourceTrigger=PropertyChanged}" FontSize="12" Foreground="#FFFFFF" Background="#0DFFFFFF" BorderBrush="#22000000" BorderThickness="1" Padding="10,7" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Hidden" Visibility="{Binding ShouldShowAnswerTextBox, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
       </Grid>
 
       <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">

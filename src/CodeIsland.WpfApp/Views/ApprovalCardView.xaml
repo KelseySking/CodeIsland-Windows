@@ -52,7 +52,7 @@
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
           <TextBlock Grid.Row="0" Text="请求内容" FontSize="10" Foreground="#80FFFFFF" />
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,6,0,0" ClipToBounds="True">
+          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Margin="0,6,0,0" ClipToBounds="True">
             <TextBlock Text="{Binding PermissionCommand}" FontSize="12" Foreground="#F2FFFFFF" FontFamily="Consolas" TextWrapping="Wrap" />
           </ScrollViewer>
         </Grid>

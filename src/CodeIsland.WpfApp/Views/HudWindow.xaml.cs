@@ -1112,15 +1112,16 @@ public partial class HudWindow : Window
         var compactHud = IsCompactHudMode();
         var visibleCardCount = Math.Min(itemCount, compactHud ? 3 : 4);
         var visibleGroupCount = CountVisibleHudListGroups(visibleCardCount);
+        var inlineDetailHeight = _state.HasExpandedHudListSessionDetail ? (compactHud ? 186d : 196d) : 0d;
         var desiredHeight = compactHud
-            ? 74d + visibleGroupCount * 30d + visibleCardCount * 72d
-            : 88d + visibleGroupCount * 34d + visibleCardCount * 84d;
+            ? 74d + visibleGroupCount * 30d + visibleCardCount * 72d + inlineDetailHeight
+            : 88d + visibleGroupCount * 34d + visibleCardCount * 84d + inlineDetailHeight;
         var mode = _settings.Get("panel_height_mode", "auto");
         return mode switch
         {
             "fixed" => Math.Clamp(compactHud ? 360d : 420d, compactHud ? 210d : 240d, maxSurfaceHeight),
             "compact" => Math.Clamp(
-                compactHud ? 64d + visibleGroupCount * 28d + visibleCardCount * 68d : 74d + visibleGroupCount * 30d + visibleCardCount * 78d,
+                compactHud ? 64d + visibleGroupCount * 28d + visibleCardCount * 68d + inlineDetailHeight : 74d + visibleGroupCount * 30d + visibleCardCount * 78d + inlineDetailHeight,
                 compactHud ? 150d : 170d,
                 Math.Min(maxSurfaceHeight, compactHud ? 360d : 420d)),
             _ => Math.Clamp(desiredHeight, compactHud ? 160d : 180d, compactHud ? Math.Min(maxSurfaceHeight, 380d) : maxSurfaceHeight)
