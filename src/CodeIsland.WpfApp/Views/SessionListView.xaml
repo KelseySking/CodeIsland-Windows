@@ -70,7 +70,10 @@
               <ItemsControl ItemsSource="{Binding Items}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Grid Margin="0,4">
+                    <Grid x:Name="ItemRoot" Margin="0,4" ClipToBounds="True">
+                      <Grid.RenderTransform>
+                        <TranslateTransform />
+                      </Grid.RenderTransform>
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -109,7 +112,10 @@
 
                               <TextBlock x:Name="TitleText" Text="{Binding Title}" FontSize="10" Foreground="#8FFFFFFF" Margin="0,7,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}" />
 
-                              <Grid x:Name="InlineDetailPanel" Height="0" Opacity="0" ClipToBounds="True">
+                              <Grid x:Name="InlineDetailPanel" Height="0" Opacity="0" ClipToBounds="True" RenderTransformOrigin="0.5,0">
+                                <Grid.RenderTransform>
+                                  <TranslateTransform Y="{x:Static views:HudAnimationTimings.ContentSlideOffset}" />
+                                </Grid.RenderTransform>
                                 <Grid.RowDefinitions>
                                   <RowDefinition Height="Auto" />
                                   <RowDefinition Height="Auto" />
@@ -134,7 +140,7 @@
 
                       <StackPanel x:Name="SideActions" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="{Binding HasSideActions, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
                         <Button x:Name="JumpButton" Content="跳转" Command="{Binding DataContext.JumpToTerminalCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding SessionId}" Style="{StaticResource HudSideActionButtonStyle}" Margin="0,0,0,6" Visibility="{Binding CanJumpToTerminal, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
-                        <Button x:Name="RemoveButton" Content="移除" Command="{Binding DataContext.RemoveHudListItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding ItemId}" Style="{StaticResource HudSideActionButtonStyle}" Visibility="{Binding CanRemoveFromHudList, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+                        <Button x:Name="RemoveButton" Content="移除" Click="RemoveButton_Click" CommandParameter="{Binding ItemId}" Style="{StaticResource HudSideActionButtonStyle}" Visibility="{Binding CanRemoveFromHudList, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
                       </StackPanel>
                     </Grid>
                     <DataTemplate.Triggers>
@@ -169,14 +175,19 @@
                         <DataTrigger.EnterActions>
                           <BeginStoryboard>
                             <Storyboard>
-                              <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="Height" To="186" Duration="{x:Static views:HudAnimationTimings.SurfaceDuration}">
+                              <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="Height" To="{x:Static views:HudAnimationTimings.InlineSessionDetailHeight}" Duration="{x:Static views:HudAnimationTimings.SurfaceDuration}">
                                 <DoubleAnimation.EasingFunction>
-                                  <CubicEase EasingMode="EaseOut" />
+                                  <views:HudShellMorphEase />
                                 </DoubleAnimation.EasingFunction>
                               </DoubleAnimation>
                               <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="Opacity" To="1" Duration="{x:Static views:HudAnimationTimings.ContentDuration}" BeginTime="{x:Static views:HudAnimationTimings.ContentFadeInDelay}">
                                 <DoubleAnimation.EasingFunction>
                                   <QuadraticEase EasingMode="EaseOut" />
+                                </DoubleAnimation.EasingFunction>
+                              </DoubleAnimation>
+                              <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)" From="{x:Static views:HudAnimationTimings.ContentSlideOffset}" To="0" Duration="{x:Static views:HudAnimationTimings.ContentDuration}" BeginTime="{x:Static views:HudAnimationTimings.ContentSlideInDelay}">
+                                <DoubleAnimation.EasingFunction>
+                                  <CubicEase EasingMode="EaseOut" />
                                 </DoubleAnimation.EasingFunction>
                               </DoubleAnimation>
                             </Storyboard>
@@ -187,10 +198,15 @@
                             <Storyboard>
                               <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="Height" To="0" Duration="{x:Static views:HudAnimationTimings.SurfaceDuration}">
                                 <DoubleAnimation.EasingFunction>
-                                  <CubicEase EasingMode="EaseOut" />
+                                  <views:HudShellMorphEase />
                                 </DoubleAnimation.EasingFunction>
                               </DoubleAnimation>
-                              <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="Opacity" To="0" Duration="{x:Static views:HudAnimationTimings.ContentDuration}" BeginTime="{x:Static views:HudAnimationTimings.ContentFadeOutTrailingDelay}">
+                              <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="Opacity" To="0" Duration="{x:Static views:HudAnimationTimings.ContentDuration}" BeginTime="{x:Static views:HudAnimationTimings.ContentFadeOutDelay}">
+                                <DoubleAnimation.EasingFunction>
+                                  <QuadraticEase EasingMode="EaseIn" />
+                                </DoubleAnimation.EasingFunction>
+                              </DoubleAnimation>
+                              <DoubleAnimation Storyboard.TargetName="InlineDetailPanel" Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)" To="{x:Static views:HudAnimationTimings.ListItemExitSlideOffset}" Duration="{x:Static views:HudAnimationTimings.ContentDuration}" BeginTime="{x:Static views:HudAnimationTimings.ContentFadeOutDelay}">
                                 <DoubleAnimation.EasingFunction>
                                   <QuadraticEase EasingMode="EaseIn" />
                                 </DoubleAnimation.EasingFunction>

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 
 namespace CodeIsland.WpfApp.Views;
 
@@ -39,26 +40,47 @@ internal readonly record struct HudAnimationSettings(
 
 public static class HudAnimationTimings
 {
+    public const double InlineSessionDetailHeight = 186d;
+
     private static HudAnimationSettings Current => HudAnimationSettings.ForCurrentRenderer();
 
     public static Duration SurfaceDuration => Current.SurfaceDuration;
 
     public static Duration ContentDuration => Current.ContentDuration;
 
+    public static double ContentSlideOffset => Current.ContentSlideOffset;
+
+    public static double ListItemExitSlideOffset => -Current.ContentSlideOffset * 0.45d;
+
+    public static TimeSpan ContentSlideInDelay => TimeSpan.FromMilliseconds(30);
+
     public static TimeSpan ContentFadeInDelay => TimeSpan.FromMilliseconds(45);
 
-    public static TimeSpan ContentFadeOutTrailingDelay
-    {
-        get
-        {
-            var surfaceDuration = SurfaceDuration;
-            var contentDuration = ContentDuration;
-            if (!surfaceDuration.HasTimeSpan || !contentDuration.HasTimeSpan)
-                return TimeSpan.Zero;
+    public static TimeSpan ContentFadeOutDelay => TimeSpan.Zero;
+}
 
-            return surfaceDuration.TimeSpan > contentDuration.TimeSpan
-                ? surfaceDuration.TimeSpan - contentDuration.TimeSpan
-                : TimeSpan.Zero;
-        }
+public sealed class HudShellMorphEase : EasingFunctionBase
+{
+    private const double Response = 8.5d;
+    private static readonly double EndValue = Calculate(1d);
+
+    public HudShellMorphEase()
+    {
+        EasingMode = EasingMode.EaseIn;
     }
+
+    protected override double EaseInCore(double normalizedTime)
+    {
+        if (normalizedTime <= 0d)
+            return 0d;
+        if (normalizedTime >= 1d)
+            return 1d;
+
+        return Math.Clamp(Calculate(normalizedTime) / EndValue, 0d, 1d);
+    }
+
+    protected override Freezable CreateInstanceCore() => new HudShellMorphEase();
+
+    private static double Calculate(double time) =>
+        1d - (1d + Response * time) * Math.Exp(-Response * time);
 }

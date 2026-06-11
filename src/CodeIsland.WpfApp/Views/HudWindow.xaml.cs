@@ -304,7 +304,6 @@ public partial class HudWindow : Window
         var surfaceChanged = _currentSurfaceType != next;
         var expectedPendingExpanded = GetExpectedPendingLayerExpanded();
         var pendingExpandedChanged = previousPendingExpanded != expectedPendingExpanded;
-        var duration = surfaceChanged ? animationSettings.SurfaceDuration : animationSettings.PendingDuration;
         var useCollapsedSource = ShouldUseCollapsedSource(previousSurfaceType, next);
 
         if (pendingExpandedChanged)
@@ -312,9 +311,15 @@ public partial class HudWindow : Window
 
         var targetLayout = CalculateWindowLayout();
         var transitionKind = ResolveShellTransitionKind(previousLayout, targetLayout);
-        if ((surfaceChanged || pendingExpandedChanged) && transitionKind == ShellTransitionKind.Shrink)
+        var sessionListLayoutChanged = ShouldAnimateSessionListLayoutChange(previousSurfaceType, next, transitionKind);
+        var shouldRunShellTransition = surfaceChanged || pendingExpandedChanged || sessionListLayoutChanged;
+        var duration = surfaceChanged || sessionListLayoutChanged ? animationSettings.SurfaceDuration : animationSettings.PendingDuration;
+        if (shouldRunShellTransition && transitionKind == ShellTransitionKind.Shrink)
         {
-            var deferTargetContentUntilCompleted = useCollapsedSource || pendingExpandedChanged || animationSettings.UsesSnapshotLayerForShrink;
+            var useSnapshotLayer = !sessionListLayoutChanged;
+            var deferTargetContentUntilCompleted = useCollapsedSource ||
+                pendingExpandedChanged ||
+                (useSnapshotLayer && animationSettings.UsesSnapshotLayerForShrink);
             var revealCollapsedContentAfterShrink = deferTargetContentUntilCompleted && next == typeof(CollapsedBarView);
             if (deferTargetContentUntilCompleted)
                 _pendingLayerExpanded = previousPendingExpanded;
@@ -325,6 +330,8 @@ public partial class HudWindow : Window
                 duration,
                 transitionKind,
                 useCollapsedSource,
+                useSnapshotLayer: useSnapshotLayer,
+                keepShrinkAnchoredToCurrentContent: sessionListLayoutChanged,
                 completedAction: () =>
                 {
                     if (deferTargetContentUntilCompleted)
@@ -347,7 +354,7 @@ public partial class HudWindow : Window
             return;
         }
 
-        if ((surfaceChanged || pendingExpandedChanged) && transitionKind == ShellTransitionKind.Expand)
+        if (shouldRunShellTransition && transitionKind == ShellTransitionKind.Expand)
         {
             var transitionPlan = PrepareShellTransition(
                 previousLayout,
@@ -363,7 +370,7 @@ public partial class HudWindow : Window
         ApplyRenderedState(next, expectedPendingExpanded, animationSettings);
 
         ShellTransitionPlan? plan = null;
-        if (surfaceChanged || pendingExpandedChanged)
+        if (shouldRunShellTransition)
             plan = PrepareShellTransition(previousLayout, targetLayout, duration, transitionKind, useCollapsedSource);
 
         UpdateWindowBoundsAndStartTransition(plan, transitionKind);
@@ -518,6 +525,11 @@ public partial class HudWindow : Window
 
     private static HudAnimationSettings GetHudAnimationSettings() => HudAnimationSettings.ForCurrentRenderer();
 
+    private static bool ShouldAnimateSessionListLayoutChange(Type? previousSurfaceType, Type nextSurfaceType, ShellTransitionKind transitionKind) =>
+        previousSurfaceType == typeof(SessionListView) &&
+        nextSurfaceType == typeof(SessionListView) &&
+        transitionKind != ShellTransitionKind.SameSize;
+
     private void SetPendingLayerExpanded(bool expanded)
     {
         if (!CanShowFoldablePendingLayer() || _pendingLayerExpanded == expanded)
@@ -614,6 +626,8 @@ public partial class HudWindow : Window
         Duration duration,
         ShellTransitionKind transitionKind,
         bool useCollapsedSource,
+        bool useSnapshotLayer = true,
+        bool keepShrinkAnchoredToCurrentContent = false,
         Action? completedAction = null)
     {
         _morphAnimator.Stop();
@@ -643,7 +657,12 @@ public partial class HudWindow : Window
             return new ShellTransitionPlan(pulsePlan, transitionId, completedAction);
         }
 
-        var (initialRect, midRect, finalRect) = CalculateShellMorphRects(previousLayout, targetLayout, transitionKind, useCollapsedSource);
+        var (initialRect, midRect, finalRect) = CalculateShellMorphRects(
+            previousLayout,
+            targetLayout,
+            transitionKind,
+            useCollapsedSource,
+            keepShrinkAnchoredToCurrentContent);
         var initialClipRadius = CalculateMorphClipRadius(initialRect, GetCurrentShellClipRadius());
         var midClipRadius = midRect is { } resolvedMidRect
             ? CalculateMorphClipRadius(resolvedMidRect, GetShellCornerRadius().TopLeft)
@@ -667,7 +686,7 @@ public partial class HudWindow : Window
             MidKeyTime: CalculateMorphMidKeyTime(duration, transitionKind),
             CompletionClipRect: completionClipRect,
             CompletionClipRadius: CalculateMorphClipRadius(completionClipRect, GetShellCornerRadius().TopLeft),
-            UseSnapshotLayer: transitionKind == ShellTransitionKind.Shrink && animationSettings.UsesSnapshotLayerForShrink);
+            UseSnapshotLayer: useSnapshotLayer && transitionKind == ShellTransitionKind.Shrink && animationSettings.UsesSnapshotLayerForShrink);
         _morphAnimator.Prepare(morphPlan);
         return new ShellTransitionPlan(morphPlan, transitionId, completedAction);
     }
@@ -679,10 +698,19 @@ public partial class HudWindow : Window
         WindowLayout previousLayout,
         WindowLayout targetLayout,
         ShellTransitionKind transitionKind,
-        bool useCollapsedSource)
+        bool useCollapsedSource,
+        bool keepShrinkAnchoredToCurrentContent)
     {
         if (!useCollapsedSource)
         {
+            if (transitionKind == ShellTransitionKind.Shrink && keepShrinkAnchoredToCurrentContent)
+            {
+                return (
+                    new Rect(0d, 0d, Math.Max(1d, previousLayout.Width), Math.Max(1d, previousLayout.Height)),
+                    null,
+                    new Rect(0d, 0d, Math.Max(1d, targetLayout.Width), Math.Max(1d, targetLayout.Height)));
+            }
+
             return transitionKind == ShellTransitionKind.Shrink
                 ? (
                     new Rect(0d, 0d, Math.Max(1d, previousLayout.Width), Math.Max(1d, previousLayout.Height)),
@@ -742,33 +770,7 @@ public partial class HudWindow : Window
     }
 
     private static IEasingFunction CreateShellTransitionEasing(HudMorphPlan plan) =>
-        plan.UseClip ? new CriticallyDampedEase() : new CubicEase { EasingMode = EasingMode.EaseOut };
-
-    private sealed class CriticallyDampedEase : EasingFunctionBase
-    {
-        private const double Response = 8.5d;
-        private static readonly double EndValue = Calculate(1d);
-
-        public CriticallyDampedEase()
-        {
-            EasingMode = EasingMode.EaseIn;
-        }
-
-        protected override double EaseInCore(double normalizedTime)
-        {
-            if (normalizedTime <= 0d)
-                return 0d;
-            if (normalizedTime >= 1d)
-                return 1d;
-
-            return Math.Clamp(Calculate(normalizedTime) / EndValue, 0d, 1d);
-        }
-
-        protected override Freezable CreateInstanceCore() => new CriticallyDampedEase();
-
-        private static double Calculate(double time) =>
-            1d - (1d + Response * time) * Math.Exp(-Response * time);
-    }
+        plan.UseClip ? new HudShellMorphEase() : new CubicEase { EasingMode = EasingMode.EaseOut };
 
     private ShellTransitionKind ResolveShellTransitionKind(WindowLayout previousLayout, WindowLayout targetLayout)
     {
@@ -1112,7 +1114,7 @@ public partial class HudWindow : Window
         var compactHud = IsCompactHudMode();
         var visibleCardCount = Math.Min(itemCount, compactHud ? 3 : 4);
         var visibleGroupCount = CountVisibleHudListGroups(visibleCardCount);
-        var inlineDetailHeight = _state.HasExpandedHudListSessionDetail ? (compactHud ? 186d : 196d) : 0d;
+        var inlineDetailHeight = _state.HasExpandedHudListSessionDetail ? HudAnimationTimings.InlineSessionDetailHeight : 0d;
         var desiredHeight = compactHud
             ? 74d + visibleGroupCount * 30d + visibleCardCount * 72d + inlineDetailHeight
             : 88d + visibleGroupCount * 34d + visibleCardCount * 84d + inlineDetailHeight;
