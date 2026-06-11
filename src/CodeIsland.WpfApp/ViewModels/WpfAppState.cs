@@ -385,6 +385,12 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
                     break;
             }
 
+            if (effect is SideEffect.None && TryUpdateExpandedInlineSessionItemInPlace(sessionId, newState))
+            {
+                UpdateSelectedSessionTranscriptRefresh();
+                return;
+            }
+
             RefreshAll();
         });
     }
@@ -1043,10 +1049,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
                 continue;
 
             var session = GetSession(vm.SessionId);
-            var kind = session?.Status == AgentStatus.Completed ||
-                       (session?.Status == AgentStatus.Idle && (!string.IsNullOrWhiteSpace(session.CompletionText) || !string.IsNullOrWhiteSpace(session.LastAssistantMessage)))
-                ? WpfHudListItemKind.Completed
-                : WpfHudListItemKind.Running;
+            var kind = GetHudSessionListItemKind(session);
 
             items.Add(new WpfHudListItemViewModel(
                 $"session:{vm.SessionId}",
@@ -1171,6 +1174,39 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         return true;
     }
 
+    private bool TryUpdateExpandedInlineSessionItemInPlace(string sessionId, SessionSnapshot session)
+    {
+        if (SurfaceKind != WpfHudSurfaceKind.SessionList ||
+            !string.Equals(_selectedSessionId, sessionId, StringComparison.Ordinal) ||
+            SelectedHudItem is not { CanShowInlineSessionDetail: true } selectedItem ||
+            !_sessionItems.TryGetValue(sessionId, out var sessionItem))
+        {
+            return false;
+        }
+
+        var kind = GetHudSessionListItemKind(session);
+        if (selectedItem.Kind != kind ||
+            !string.Equals(selectedItem.SourceKey, sessionItem.SourceKey, StringComparison.Ordinal) ||
+            !string.Equals(selectedItem.ProjectName, sessionItem.Title, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        selectedItem.UpdateSessionPresentation(
+            kind == WpfHudListItemKind.Completed ? "已完成" : "运行中",
+            sessionItem.Title,
+            sessionItem.LastMessage,
+            sessionItem.SourceKey,
+            sessionItem.Source,
+            sessionItem.StatusText,
+            sessionItem.Status,
+            kind == WpfHudListItemKind.Completed ? "#FF8EE6D0" : "#FF7AB8FF",
+            sessionItem.TimeText,
+            FormatSessionUserPrompt(session),
+            FormatSessionAssistantReply(session));
+        return true;
+    }
+
     private static string BuildPermissionSummary(PermissionRequest request)
     {
         if (request.ToolInput != null && request.ToolInput.TryGetValue("command", out var cmd) && cmd is string s && !string.IsNullOrWhiteSpace(s))
@@ -1266,7 +1302,8 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
         _sessions[sessionId] = refreshed;
         SyncSessionItem(sessionId, refreshed);
-        if (TryUpdateExpandedInlineSessionDetail(sessionId, refreshed))
+        if (TryUpdateExpandedInlineSessionItemInPlace(sessionId, refreshed) ||
+            TryUpdateExpandedInlineSessionDetail(sessionId, refreshed))
         {
             UpdateSelectedSessionTranscriptRefresh();
             return true;
@@ -1341,6 +1378,12 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         _selectedSessionTranscriptRefreshTimer = null;
         _selectedSessionTranscriptRefreshSessionId = null;
     }
+
+    private static WpfHudListItemKind GetHudSessionListItemKind(SessionSnapshot? session) =>
+        session?.Status == AgentStatus.Completed ||
+        (session?.Status == AgentStatus.Idle && (!string.IsNullOrWhiteSpace(session.CompletionText) || !string.IsNullOrWhiteSpace(session.LastAssistantMessage)))
+            ? WpfHudListItemKind.Completed
+            : WpfHudListItemKind.Running;
 
     private static bool IsSafeReadOnlyPermissionRequest(PermissionRequest request) =>
         request.ToolName is "Read" or "Grep" or "Glob" or "LS" or "TodoRead";

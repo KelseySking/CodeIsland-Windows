@@ -58,15 +58,15 @@ public sealed class WpfHudListItemViewModel : INotifyPropertyChanged
     public string ItemId { get; }
     public WpfHudListItemKind Kind { get; }
     public string? SessionId { get; }
-    public string Title { get; }
-    public string ProjectName { get; }
-    public string Summary { get; }
-    public string SourceKey { get; }
-    public string SourceDisplayName { get; }
-    public string StatusText { get; }
-    public AgentStatus Status { get; }
-    public string AccentBrush { get; }
-    public string TimeText { get; }
+    public string Title { get; private set; }
+    public string ProjectName { get; private set; }
+    public string Summary { get; private set; }
+    public string SourceKey { get; private set; }
+    public string SourceDisplayName { get; private set; }
+    public string StatusText { get; private set; }
+    public AgentStatus Status { get; private set; }
+    public string AccentBrush { get; private set; }
+    public string TimeText { get; private set; }
     public ICommand OpenDetailCommand { get; }
     public string DetailUserPrompt
     {
@@ -115,6 +115,44 @@ public sealed class WpfHudListItemViewModel : INotifyPropertyChanged
     {
         DetailUserPrompt = userPrompt;
         DetailAssistantReply = assistantReply;
+    }
+
+    public void UpdateSessionPresentation(
+        string title,
+        string projectName,
+        string summary,
+        string sourceKey,
+        string sourceDisplayName,
+        string statusText,
+        AgentStatus status,
+        string accentBrush,
+        string timeText,
+        string detailUserPrompt,
+        string detailAssistantReply)
+    {
+        SetProperty(title, value => Title = value, Title, nameof(Title));
+        SetProperty(projectName, value => ProjectName = value, ProjectName, nameof(ProjectName));
+        SetProperty(summary, value => Summary = value, Summary, nameof(Summary));
+        SetProperty(sourceKey, value => SourceKey = value, SourceKey, nameof(SourceKey));
+        SetProperty(sourceDisplayName, value => SourceDisplayName = value, SourceDisplayName, nameof(SourceDisplayName));
+        SetProperty(statusText, value => StatusText = value, StatusText, nameof(StatusText));
+        if (Status != status)
+        {
+            Status = status;
+            OnPropertyChanged(nameof(Status));
+        }
+        SetProperty(accentBrush, value => AccentBrush = value, AccentBrush, nameof(AccentBrush));
+        SetProperty(timeText, value => TimeText = value, TimeText, nameof(TimeText));
+        UpdateInlineDetail(detailUserPrompt, detailAssistantReply);
+    }
+
+    private void SetProperty(string next, Action<string> assign, string current, string propertyName)
+    {
+        if (current == next)
+            return;
+
+        assign(next);
+        OnPropertyChanged(propertyName);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
