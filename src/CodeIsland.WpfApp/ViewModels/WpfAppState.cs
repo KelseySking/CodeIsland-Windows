@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Windows.Input;
@@ -30,13 +29,11 @@ public enum WpfPendingKind
 public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 {
     private static readonly TimeSpan SelectedSessionTranscriptRefreshInterval = TimeSpan.FromMilliseconds(900);
-    private static readonly TimeSpan ProcessMonitorInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan ProcessStartTimeTolerance = TimeSpan.FromSeconds(2);
     private const string NeutralHudSource = "codeisland";
 
     private readonly SettingsManager _settings;
     private readonly WpfWebhookNotifier? _webhookNotifier;
-    private readonly CodeIslandHubState _hubState;
+    private readonly IWpfRuntimeClient _runtimeClient;
     private readonly Dictionary<string, SessionSnapshot> _sessions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, WpfSessionItemViewModel> _sessionItems = new(StringComparer.Ordinal);
     private readonly HashSet<string> _removedHudSessionIds = new(StringComparer.Ordinal);
@@ -51,7 +48,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private int _pendingActionRevision;
     private System.Threading.Timer? _completionTimer;
     private System.Threading.Timer? _selectedSessionTranscriptRefreshTimer;
-    private System.Threading.Timer? _processMonitorTimer;
     private string? _selectedSessionTranscriptRefreshSessionId;
     private bool _disposed;
     private readonly HashSet<string> _deferredSessionItemIds = new(StringComparer.Ordinal);
@@ -60,11 +56,11 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private bool _hudQuestionOptionsRefreshPending;
     private bool _hudSessionItemsRefreshPending;
 
-    public WpfAppState(SettingsManager settings, CodeIslandHubState hubState, WpfWebhookNotifier? webhookNotifier = null)
+    public WpfAppState(SettingsManager settings, IWpfRuntimeClient runtimeClient, WpfWebhookNotifier? webhookNotifier = null)
     {
         _settings = settings;
         _webhookNotifier = webhookNotifier;
-        _hubState = hubState;
+        _runtimeClient = runtimeClient;
         ShowSessionListCommand = new RelayCommand(ShowSessionList);
         CollapseCommand = new RelayCommand(Collapse);
         DismissCompletionCommand = new RelayCommand(DismissCompletion);
@@ -81,9 +77,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         JumpToTerminalCommand = new RelayCommand(parameter => JumpToTerminal(parameter as string));
         SelectedSessionJumpToTerminalCommand = new RelayCommand(() => JumpToTerminal(_selectedSessionId));
         _settings.SettingChanged += OnSettingChanged;
-        _hubState.StateChanged += OnHubStateChanged;
-        _hubState.TerminalActivationRequested += OnHubTerminalActivationRequested;
-        StartProcessMonitor();
+        _runtimeClient.StateChanged += OnHubStateChanged;
     }
 
     public void BeginHudVisualUpdateDeferral()
@@ -256,18 +250,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         }
 
         ApplyHubState(e);
-    }
-
-    private void OnHubTerminalActivationRequested(SessionSnapshot session)
-    {
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher != null && !dispatcher.CheckAccess())
-        {
-            dispatcher.Invoke(() => JumpToTerminal(session.SessionId));
-            return;
-        }
-
-        JumpToTerminal(session.SessionId);
     }
 
     private void ApplyHubState(HubStateChangedEventArgs change)
@@ -586,7 +568,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         if (string.IsNullOrWhiteSpace(sessionId) || !_sessions.TryGetValue(sessionId, out var session))
             return;
 
-        _ = WpfTerminalActivator.Activate(session);
+        _ = _runtimeClient.ActivateTerminalAsync(session.SessionId);
     }
 
     public void Collapse()
@@ -662,8 +644,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         if (pending == null)
             return;
 
-        if (_hubState.AllowPermission(pending.ActionId, always))
-            AdvanceAfterPendingResponse();
+        _ = RunRuntimeCommandAsync(
+            () => _runtimeClient.AllowPermissionAsync(pending.ActionId, always),
+            AdvanceAfterPendingResponse);
     }
 
     public void Deny()
@@ -672,8 +655,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         if (pending == null)
             return;
 
-        if (_hubState.DenyPermission(pending.ActionId, "user denied"))
-            AdvanceAfterPendingResponse();
+        _ = RunRuntimeCommandAsync(
+            () => _runtimeClient.DenyPermissionAsync(pending.ActionId, "user denied"),
+            AdvanceAfterPendingResponse);
     }
 
     public void DismissPermission()
@@ -682,8 +666,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         if (pending == null)
             return;
 
-        if (_hubState.DenyPermission(pending.ActionId, "dismissed"))
-            AdvanceAfterPendingResponse();
+        _ = RunRuntimeCommandAsync(
+            () => _runtimeClient.DenyPermissionAsync(pending.ActionId, "dismissed"),
+            AdvanceAfterPendingResponse);
     }
 
     public void DismissQuestion()
@@ -692,8 +677,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         if (pending == null)
             return;
 
-        if (_hubState.DismissQuestion(pending.ActionId, "dismissed"))
-            AdvanceAfterPendingResponse();
+        _ = RunRuntimeCommandAsync(
+            () => _runtimeClient.DismissQuestionAsync(pending.ActionId, "dismissed"),
+            AdvanceAfterPendingResponse);
     }
 
     public void SubmitQuestion(string answer)
@@ -704,12 +690,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             ? QuestionOptions.Where(static option => option.IsSelected).Select(static option => option.ResponseValue).ToArray()
             : [answer];
 
-        if (_hubState.AnswerCurrentQuestion(pending.ActionId, resolvedAnswers, out var resolved))
-        {
-            QuestionAnswer = "";
-            if (resolved)
-                AdvanceAfterPendingResponse();
-        }
+        _ = SubmitCurrentQuestionAsync(pending.ActionId, resolvedAnswers);
     }
 
     private void HandleQuestionOption(WpfQuestionOptionViewModel? option)
@@ -727,11 +708,35 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         var pending = GetCurrentQuestion();
         if (option == null || pending == null) return;
 
-        if (_hubState.AnswerCurrentQuestion(pending.ActionId, [option.ResponseValue], out var resolved))
+        _ = SubmitCurrentQuestionAsync(pending.ActionId, [option.ResponseValue]);
+    }
+
+    private async Task SubmitCurrentQuestionAsync(string actionId, IReadOnlyList<string> answers)
+    {
+        try
         {
+            var result = await _runtimeClient.AnswerCurrentQuestionAsync(actionId, answers);
+            if (!result.Success)
+                return;
+
             QuestionAnswer = "";
-            if (resolved)
+            if (result.Resolved)
                 AdvanceAfterPendingResponse();
+        }
+        catch
+        {
+        }
+    }
+
+    private static async Task RunRuntimeCommandAsync(Func<Task<bool>> command, Action onSuccess)
+    {
+        try
+        {
+            if (await command())
+                onSuccess();
+        }
+        catch
+        {
         }
     }
 
@@ -811,73 +816,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         RefreshAll();
     }
 
-    private void StartProcessMonitor()
-    {
-        _processMonitorTimer = new System.Threading.Timer(_ =>
-        {
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (_disposed || dispatcher == null)
-                return;
-
-            dispatcher.BeginInvoke(() =>
-            {
-                if (!_disposed)
-                    RemoveExitedSessions();
-            });
-        }, null, ProcessMonitorInterval, ProcessMonitorInterval);
-    }
-
-    private void RemoveExitedSessions()
-    {
-        _hubState.RemoveExitedSessions(IsTrackedProcessExited);
-    }
-
-    private static bool IsTrackedProcessExited(SessionSnapshot session)
-    {
-        if (session.Pid <= 0)
-            return false;
-
-        try
-        {
-            using var process = Process.GetProcessById(session.Pid);
-            if (process.HasExited)
-                return true;
-
-            if (session.TrackedProcessStartedAtUtc is not { } expectedStart)
-                return false;
-
-            if (!TryGetProcessStartTimeUtc(process, out var actualStart))
-                return false;
-
-            return (actualStart - expectedStart).Duration() > ProcessStartTimeTolerance;
-        }
-        catch (ArgumentException)
-        {
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static bool HasCompletionContent(SessionSnapshot session) =>
         !string.IsNullOrWhiteSpace(session.CompletionText) ||
         !string.IsNullOrWhiteSpace(session.LastAssistantMessage);
-
-    private static bool TryGetProcessStartTimeUtc(Process process, out DateTime startedAtUtc)
-    {
-        try
-        {
-            startedAtUtc = process.StartTime.ToUniversalTime();
-            return true;
-        }
-        catch
-        {
-            startedAtUtc = default;
-            return false;
-        }
-    }
 
     private void RebuildHudListItems()
     {
@@ -1418,11 +1359,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     public void Dispose()
     {
         _settings.SettingChanged -= OnSettingChanged;
-        _hubState.StateChanged -= OnHubStateChanged;
-        _hubState.TerminalActivationRequested -= OnHubTerminalActivationRequested;
+        _runtimeClient.StateChanged -= OnHubStateChanged;
         _disposed = true;
         _completionTimer?.Dispose();
-        _processMonitorTimer?.Dispose();
         StopSelectedSessionTranscriptRefresh();
     }
 

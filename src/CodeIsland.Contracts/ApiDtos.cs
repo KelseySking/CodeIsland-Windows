@@ -76,6 +76,8 @@ public sealed record SessionDto(
     string? CompletionText,
     string? TranscriptPath,
     long TranscriptPosition,
+    string? TerminalApp,
+    string? TerminalSessionId,
     IReadOnlyList<ChatMessageDto> RecentMessages,
     IReadOnlyList<ToolHistoryEntryDto> ToolHistory);
 
@@ -83,6 +85,7 @@ public sealed record PermissionRequestDto(
     string SessionId,
     string ToolName,
     string? ToolUseId,
+    IReadOnlyDictionary<string, object?>? ToolInput,
     string? Description,
     string HookEventName);
 
@@ -131,6 +134,13 @@ public sealed record PermissionDecisionRequest(bool Always = false, string? Reas
 public sealed record QuestionAnswerRequest(
     string? Answer = null,
     IReadOnlyDictionary<string, IReadOnlyList<string>>? Answers = null);
+
+public sealed record QuestionCurrentAnswerRequest(
+    IReadOnlyList<string> Answers);
+
+public sealed record QuestionCurrentAnswerResultDto(
+    bool Success,
+    bool Resolved);
 
 public sealed record HubEventDto(
     string Type,

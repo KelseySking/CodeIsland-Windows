@@ -41,6 +41,8 @@ public class CodeIslandHubStateTests
         var pending = Assert.Single(state.GetPendingActions());
 
         Assert.Equal("permission", pending.Kind);
+        Assert.NotNull(pending.Permission!.ToolInput);
+        Assert.Equal("dotnet test", pending.Permission.ToolInput!["command"]);
         Assert.True(state.AllowPermission(pending.ActionId, always: false));
 
         var response = await responseTask.WaitAsync(TimeSpan.FromSeconds(5));

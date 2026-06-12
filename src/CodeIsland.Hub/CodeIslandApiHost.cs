@@ -167,6 +167,11 @@ public sealed class CodeIslandApiHost : IAsyncDisposable, IDisposable
             var request = await ReadBodyAsync<QuestionAnswerRequest>(context) ?? new QuestionAnswerRequest();
             return await RunPendingOperationAsync(actionId, () => _state.AnswerQuestion(actionId, request));
         });
+        api.MapPost("/questions/{actionId}/answer-current", async (string actionId, HttpContext context) =>
+        {
+            var request = await ReadBodyAsync<QuestionCurrentAnswerRequest>(context) ?? new QuestionCurrentAnswerRequest([]);
+            return RunCurrentQuestionOperation(actionId, request.Answers ?? []);
+        });
         api.MapPost("/questions/{actionId}/dismiss", async (string actionId) =>
             await RunPendingOperationAsync(actionId, () => _state.DismissQuestion(actionId, "dismissed")));
 
@@ -198,6 +203,14 @@ public sealed class CodeIslandApiHost : IAsyncDisposable, IDisposable
             return Task.FromResult<IResult>(Results.NotFound(new ApiErrorDto("not_found", "Pending action not found")));
 
         return Task.FromResult<IResult>(Results.Ok(new { success }));
+    }
+
+    private IResult RunCurrentQuestionOperation(string actionId, IReadOnlyList<string> answers)
+    {
+        if (!_state.AnswerCurrentQuestion(actionId, answers, out var resolved))
+            return Results.NotFound(new ApiErrorDto("not_found", "Pending action not found"));
+
+        return Results.Ok(new QuestionCurrentAnswerResultDto(Success: true, Resolved: resolved));
     }
 
     private static IResult ToResult<T>(T? value) where T : class =>

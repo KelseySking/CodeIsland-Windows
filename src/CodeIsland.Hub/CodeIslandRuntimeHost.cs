@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using CodeIsland.Core.Models;
 using CodeIsland.Core.Services;
 
@@ -26,7 +27,10 @@ public sealed class CodeIslandRuntimeHostOptions
 
 public sealed class CodeIslandRuntimeHost : IAsyncDisposable, IDisposable
 {
+    private static readonly TimeSpan ProcessMonitorInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan ProcessStartTimeTolerance = TimeSpan.FromSeconds(2);
     private readonly CodeIslandRuntimeHostOptions _options;
+    private System.Threading.Timer? _processMonitorTimer;
     private bool _started;
 
     public CodeIslandRuntimeHost(CodeIslandRuntimeHostOptions options)
@@ -75,11 +79,13 @@ public sealed class CodeIslandRuntimeHost : IAsyncDisposable, IDisposable
 
         await HookServer.StartAsync();
         await ApiHost.StartAsync(ct);
+        StartProcessMonitor();
         _started = true;
     }
 
     public async ValueTask DisposeAsync()
     {
+        _processMonitorTimer?.Dispose();
         HubState.RealtimeEventRaised -= OnHubRealtimeEventRaised;
         HookServer.Dispose();
         await ApiHost.DisposeAsync();
@@ -87,6 +93,7 @@ public sealed class CodeIslandRuntimeHost : IAsyncDisposable, IDisposable
 
     public void Dispose()
     {
+        _processMonitorTimer?.Dispose();
         HubState.RealtimeEventRaised -= OnHubRealtimeEventRaised;
         HookServer.Dispose();
         ApiHost.Dispose();
@@ -109,5 +116,58 @@ public sealed class CodeIslandRuntimeHost : IAsyncDisposable, IDisposable
             return false;
 
         return request.ToolName is "Read" or "Grep" or "Glob" or "LS" or "TodoRead";
+    }
+
+    private void StartProcessMonitor()
+    {
+        _processMonitorTimer?.Dispose();
+        _processMonitorTimer = new System.Threading.Timer(_ =>
+        {
+            if (_started)
+                HubState.RemoveExitedSessions(IsTrackedProcessExited);
+        }, null, ProcessMonitorInterval, ProcessMonitorInterval);
+    }
+
+    private static bool IsTrackedProcessExited(SessionSnapshot session)
+    {
+        if (session.Pid <= 0)
+            return false;
+
+        try
+        {
+            using var process = Process.GetProcessById(session.Pid);
+            if (process.HasExited)
+                return true;
+
+            if (session.TrackedProcessStartedAtUtc is not { } expectedStart)
+                return false;
+
+            if (!TryGetProcessStartTimeUtc(process, out var actualStart))
+                return false;
+
+            return (actualStart - expectedStart).Duration() > ProcessStartTimeTolerance;
+        }
+        catch (ArgumentException)
+        {
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetProcessStartTimeUtc(Process process, out DateTime startedAtUtc)
+    {
+        try
+        {
+            startedAtUtc = process.StartTime.ToUniversalTime();
+            return true;
+        }
+        catch
+        {
+            startedAtUtc = default;
+            return false;
+        }
     }
 }

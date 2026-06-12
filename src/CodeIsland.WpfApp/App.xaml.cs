@@ -14,6 +14,7 @@ public partial class App : System.Windows.Application
 {
     private SettingsManager? _settings;
     private CodeIslandRuntimeHost? _runtimeHost;
+    private IWpfRuntimeClient? _runtimeClient;
     private WpfAppState? _appState;
     private ICodeIslandSourceService? _sourceService;
     private WpfTrayService? _tray;
@@ -31,14 +32,27 @@ public partial class App : System.Windows.Application
 
         _settings = new SettingsManager();
         var logger = new EventLogger();
-        _runtimeHost = new CodeIslandRuntimeHost(new CodeIslandRuntimeHostOptions
+        var apiPort = Math.Clamp(_settings.Get("api_port", 32145), 1024, 65535);
+        var apiToken = LocalApiTokenStore.EnsureToken(_settings);
+        var useExternalRuntime = string.Equals(_settings.Get("runtime_launch_mode", "embedded"), "external", StringComparison.OrdinalIgnoreCase);
+
+        if (!useExternalRuntime)
         {
-            Settings = _settings,
-            Logger = logger
-        });
-        _sourceService = _runtimeHost.SourceService;
+            _runtimeHost = new CodeIslandRuntimeHost(new CodeIslandRuntimeHostOptions
+            {
+                Settings = _settings,
+                Logger = logger,
+                ApiPort = apiPort,
+                ApiToken = apiToken
+            });
+        }
+
+        var apiBaseUrl = _runtimeHost?.ApiBaseUrl ?? CodeIslandApiOptions.Localhost(apiToken, apiPort).BaseUrl;
+        var runtimeClient = new WpfRuntimeApiClient(apiBaseUrl, apiToken);
+        _runtimeClient = runtimeClient;
+        _sourceService = runtimeClient;
         _webhookNotifier = new WpfWebhookNotifier(_settings);
-        _appState = new WpfAppState(_settings, _runtimeHost.HubState, _webhookNotifier);
+        _appState = new WpfAppState(_settings, runtimeClient, _webhookNotifier);
         _appState.PlaySoundRequested += OnPlaySoundRequested;
         _soundManager = new WpfSoundManager
         {
@@ -48,25 +62,41 @@ public partial class App : System.Windows.Application
         _settings.SettingChanged += OnRuntimeSettingChanged;
         _hudWindow = new HudWindow(_appState, _settings);
         _hudWindow.ShowNoActivate();
-        _ = StartRuntimeHostAsync(logger);
+        _ = StartRuntimeAsync(logger);
 
         _tray = new WpfTrayService(_hudWindow, ShowSettings, ShowAbout, Shutdown);
         _hotkey = new WpfGlobalHotkey();
         RegisterHotkeys();
     }
 
-    private async Task StartRuntimeHostAsync(EventLogger logger)
+    private async Task StartRuntimeAsync(EventLogger logger)
     {
-        if (_runtimeHost == null)
+        if (_runtimeHost != null)
+        {
+            try
+            {
+                await _runtimeHost.StartAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.Write("CodeIslandRuntimeHost", "start-failed", new Dictionary<string, string?>
+                {
+                    ["message"] = ex.Message,
+                    ["exception"] = ex.GetType().Name
+                });
+            }
+        }
+
+        if (_runtimeClient == null)
             return;
 
         try
         {
-            await _runtimeHost.StartAsync();
+            await _runtimeClient.StartAsync();
         }
         catch (Exception ex)
         {
-            logger.Write("CodeIslandRuntimeHost", "start-failed", new Dictionary<string, string?>
+            logger.Write("WpfRuntimeApiClient", "start-failed", new Dictionary<string, string?>
             {
                 ["message"] = ex.Message,
                 ["exception"] = ex.GetType().Name
@@ -176,8 +206,9 @@ public partial class App : System.Windows.Application
             _appState.PlaySoundRequested -= OnPlaySoundRequested;
         _hotkey?.Dispose();
         _tray?.Dispose();
-        _runtimeHost?.Dispose();
         _appState?.Dispose();
+        _runtimeClient?.Dispose();
+        _runtimeHost?.Dispose();
         _soundManager?.Dispose();
         _webhookNotifier?.Dispose();
         base.OnExit(e);

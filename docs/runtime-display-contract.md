@@ -112,9 +112,15 @@ All routes below are under `/api`.
 | `POST` | `/permissions/{actionId}/allow` | Allow a pending permission. | `PermissionDecisionRequest` | `{ success: true }` or `404` |
 | `POST` | `/permissions/{actionId}/deny` | Deny a pending permission. | `PermissionDecisionRequest` | `{ success: true }` or `404` |
 | `POST` | `/questions/{actionId}/answer` | Answer a pending question. | `QuestionAnswerRequest` | `{ success: true }` or `404` |
+| `POST` | `/questions/{actionId}/answer-current` | Answer only the current step of a pending multi-question flow. | `QuestionCurrentAnswerRequest` | `QuestionCurrentAnswerResultDto` or `404` |
 | `POST` | `/questions/{actionId}/dismiss` | Dismiss a pending question. | None | `{ success: true }` or `404` |
 
 `QuestionAnswerRequest.Answers` is preferred for multi-question or keyed answers. `QuestionAnswerRequest.Answer` is the single-answer fallback.
+`QuestionCurrentAnswerRequest.Answers` is for HUD-style step-by-step answering: Runtime records the answer under the pending action's current answer key, advances to the next question when one exists, and returns `Resolved = false` until the final answer completes the hook response.
+
+`PermissionRequestDto.ToolInput` is included for display clients that render command/pattern details. Values are JSON-serializable primitives or JSON objects/arrays. Clients should tolerate unknown value shapes.
+
+`SessionDto.TerminalApp` and `SessionDto.TerminalSessionId` are nullable terminal metadata hints. Display clients should prefer `/sessions/{sessionId}/activate-terminal` for the user action and treat these fields as optional display/activation hints.
 
 ## WebSocket Events
 
@@ -157,10 +163,9 @@ Rules for future changes:
 
 These are known gaps between the desired contract and the current codebase:
 
-* `WpfAppState` still contains legacy hook-handling and pending-action logic. It should become a UI projection over Runtime state.
 * WPF still reads transcript updates directly for selected-session refresh. Runtime should own transcript consumption and expose display-ready messages.
 * `source.statusChanged` currently has more than one payload shape. Display clients should refetch `/sources` until a normalized event payload is introduced.
-* Source-specific behavior is still split across static helpers. Future source extensibility should move toward adapter registration.
+* WPF can embed the Runtime library during transition, but its HUD state and actions now consume the Runtime REST/WebSocket contract. Set `runtime_launch_mode=external` to connect the HUD to an already running standalone Runtime host.
 
 ## Implementation Sequence
 

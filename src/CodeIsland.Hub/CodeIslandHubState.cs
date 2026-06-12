@@ -666,6 +666,8 @@ public sealed class CodeIslandHubState : ICodeIslandHubState
         session.CompletionText,
         session.TranscriptPath,
         session.TranscriptPosition,
+        session.TerminalApp,
+        session.TerminalSessionId,
         session.RecentMessages.Select(MapMessage).ToList(),
         session.ToolHistory.Select(MapToolHistory).ToList());
 
@@ -685,6 +687,7 @@ public sealed class CodeIslandHubState : ICodeIslandHubState
         request.SessionId,
         request.ToolName,
         request.ToolUseId,
+        request.ToolInput,
         request.Description,
         request.HookEventName);
 

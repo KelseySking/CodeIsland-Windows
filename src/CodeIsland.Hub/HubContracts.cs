@@ -14,6 +14,7 @@ public interface ICodeIslandHubState
     bool AllowPermission(string actionId, bool always);
     bool DenyPermission(string actionId, string reason);
     bool AnswerQuestion(string actionId, QuestionAnswerRequest request);
+    bool AnswerCurrentQuestion(string actionId, IReadOnlyList<string> answers, out bool resolved);
     bool DismissQuestion(string actionId, string reason);
 }
 
