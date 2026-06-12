@@ -43,6 +43,7 @@ Project repository: https://github.com/KelseySking/CodeIsland-Windows
 | Language/runtime | C# / .NET 8 (`net8.0` / `net8.0-windows`) |
 | UI framework | WPF + WPF-UI |
 | IPC | Named Pipes, 4-byte little-endian length prefix + UTF-8 JSON |
+| Local API | ASP.NET Core Minimal API + WebSocket, bound to `127.0.0.1` by default |
 | Process query | WMI / `System.Management` |
 | Sound effects | NAudio |
 | Hotkeys | `RegisterHotKey` P/Invoke |
@@ -53,6 +54,7 @@ Project repository: https://github.com/KelseySking/CodeIsland-Windows
 ```text
 CodeIsland.Windows/
 ├── src/
+│   ├── CodeIsland.Contracts/     # Local API / Hub DTO contracts
 │   ├── CodeIsland.Core/          # Platform-independent core library
 │   │   ├── Models/               # HookEvent, SessionSnapshot, AgentStatus, SupportedSource
 │   │   ├── Services/             # EventNormalizer, ConfigInstaller, L10n, SettingsManager
@@ -62,19 +64,21 @@ CodeIsland.Windows/
 │   │   ├── ProcessAncestry.cs    # WMI process ancestry parsing
 │   │   ├── SourceResolver.cs     # AI tool source identification
 │   │   └── EnvironmentCollector.cs
+│   ├── CodeIsland.Hub/           # Local Hub: CLI operations, source management, HTTP/WebSocket API
 │   └── CodeIsland.WpfApp/        # WPF main application
 │       ├── ViewModels/           # WpfAppState and HUD view models
 │       ├── Views/                # HUD, session list, approvals, Q&A, details, settings, about
-│       ├── Services/             # HookServer, TerminalActivator, GlobalHotkey, UpdateChecker
+│       ├── Services/             # HookServer, HubStateAdapter, TerminalActivator, GlobalHotkey, UpdateChecker
 │       └── Assets/               # Icons and sound effects
 ├── tests/
 │   ├── CodeIsland.Core.Tests/
-│   └── CodeIsland.Bridge.Tests/
+│   ├── CodeIsland.Bridge.Tests/
+│   └── CodeIsland.Hub.Tests/
 ├── scripts/                      # Build, publish, and packaging scripts
 └── docs/                         # Technical specs, changelog, hardware/rendering notes
 ```
 
-The dependency direction is fixed as `CodeIsland.WpfApp → CodeIsland.Core` and `CodeIsland.Bridge → CodeIsland.Core`. App and Bridge do not reference each other; they communicate only through Named Pipes.
+The dependency direction is layered around Bridge/Hub/Core: `CodeIsland.Bridge → CodeIsland.Core`, `CodeIsland.Hub → CodeIsland.Contracts + CodeIsland.Core`, and `CodeIsland.WpfApp → CodeIsland.Hub + CodeIsland.Core`. Bridge remains the short-lived Hook adapter; WPF displays and operates state through Hub-facing interfaces/API.
 
 ## Quick Start
 
@@ -108,6 +112,7 @@ dotnet run --project src/CodeIsland.WpfApp
 ```
 
 After startup, the HUD floating window is shown and a CodeIsland icon is created in the system tray. Hook events are forwarded to the main application by `CodeIsland.Bridge` as a short-lived child process. You do not need to keep Bridge running manually.
+The main application also starts a local API at `http://127.0.0.1:32145` by default. The API token is stored as `api_token` in `%APPDATA%\CodeIsland\settings.json`.
 
 ### Run tests
 
@@ -169,6 +174,35 @@ AI tool triggers a Hook event (currently Claude Code and Codex)
 ```
 
 `PermissionRequest`, `PreToolUse` events that explicitly require approval, and `Notification`/`Question*` events with question payloads are treated as blocking events and wait for user responses. Normal events first return a `{}` ack and then update the UI asynchronously, avoiding event loss or pipe noise caused by the short-lived Bridge disconnecting too early.
+
+## Local Hub API
+
+The WPF HUD is the default client. Web, plugin, and other local frontends can use the same localhost API. The first phase is local-only; LAN/mobile/watch pairing is not implemented yet.
+
+Authentication supports:
+
+- `Authorization: Bearer <api_token>`
+- `X-CodeIsland-Token: <api_token>`
+- WebSocket clients can use `ws://127.0.0.1:32145/api/events?token=<api_token>`
+
+Current API surface:
+
+- `GET /api/health`
+- `GET /api/capabilities`
+- `GET /api/sources`
+- `POST /api/sources/{source}/install`
+- `POST /api/sources/{source}/uninstall`
+- `POST /api/sources/{source}/repair`
+- `GET /api/runtime-assets`
+- `POST /api/runtime-assets/repair`
+- `GET /api/sessions`
+- `GET /api/sessions/{sessionId}`
+- `GET /api/pending`
+- `POST /api/permissions/{actionId}/allow`
+- `POST /api/permissions/{actionId}/deny`
+- `POST /api/questions/{actionId}/answer`
+- `POST /api/questions/{actionId}/dismiss`
+- `WS /api/events`
 
 ## Hook Installation
 

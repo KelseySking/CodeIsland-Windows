@@ -17,6 +17,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\CodeIsland.Core\CodeIsland.Core.csproj" />
+    <ProjectReference Include="..\CodeIsland.Hub\CodeIsland.Hub.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\app.ico" />

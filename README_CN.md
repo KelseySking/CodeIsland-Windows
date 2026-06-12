@@ -42,6 +42,7 @@ CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源�
 | 语言/运行时 | C# / .NET 8 (`net8.0` / `net8.0-windows`) |
 | UI 框架 | WPF + WPF-UI |
 | IPC | Named Pipes，4 字节 little-endian 长度前缀 + UTF-8 JSON |
+| 本地 API | ASP.NET Core Minimal API + WebSocket，默认绑定 `127.0.0.1` |
 | 进程查询 | WMI / `System.Management` |
 | 音效 | NAudio |
 | 快捷键 | `RegisterHotKey` P/Invoke |
@@ -52,6 +53,7 @@ CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源�
 ```text
 CodeIsland.Windows/
 ├── src/
+│   ├── CodeIsland.Contracts/     # 本地 API / Hub DTO 合同
 │   ├── CodeIsland.Core/          # 平台无关核心库
 │   │   ├── Models/               # HookEvent, SessionSnapshot, AgentStatus, SupportedSource
 │   │   ├── Services/             # EventNormalizer, ConfigInstaller, L10n, SettingsManager
@@ -61,19 +63,21 @@ CodeIsland.Windows/
 │   │   ├── ProcessAncestry.cs    # WMI 进程族谱解析
 │   │   ├── SourceResolver.cs     # AI 工具来源识别
 │   │   └── EnvironmentCollector.cs
+│   ├── CodeIsland.Hub/           # 本地 Hub：CLI 操作接口、source 管理、HTTP/WebSocket API
 │   └── CodeIsland.WpfApp/        # WPF 主应用
 │       ├── ViewModels/           # WpfAppState 与 HUD 视图模型
 │       ├── Views/                # HUD、会话列表、审批、问答、详情、设置、关于
-│       ├── Services/             # HookServer, TerminalActivator, GlobalHotkey, UpdateChecker
+│       ├── Services/             # HookServer, HubStateAdapter, TerminalActivator, GlobalHotkey, UpdateChecker
 │       └── Assets/               # 图标、音效
 ├── tests/
 │   ├── CodeIsland.Core.Tests/
-│   └── CodeIsland.Bridge.Tests/
+│   ├── CodeIsland.Bridge.Tests/
+│   └── CodeIsland.Hub.Tests/
 ├── scripts/                      # 构建、发布、打包脚本
 └── docs/                         # 技术规格、变更日志、硬件/渲染说明
 ```
 
-依赖方向固定为 `CodeIsland.WpfApp → CodeIsland.Core`、`CodeIsland.Bridge → CodeIsland.Core`。App 和 Bridge 不互相引用，只通过 Named Pipe 通信。
+依赖方向固定为 Bridge/Hub/Core 分层：`CodeIsland.Bridge → CodeIsland.Core`，`CodeIsland.Hub → CodeIsland.Contracts + CodeIsland.Core`，`CodeIsland.WpfApp → CodeIsland.Hub + CodeIsland.Core`。Bridge 仍是短生命周期 Hook adapter；WPF 通过 Hub-facing 接口/API 展示和操作状态。
 
 ## 快速开始
 
@@ -106,6 +110,7 @@ dotnet run --project src/CodeIsland.WpfApp
 ```
 
 启动后会显示 HUD 浮窗，并在托盘区创建 CodeIsland 图标。Hook 事件由 `CodeIsland.Bridge` 作为短生命周期子进程转发到主应用，不需要手动常驻运行 Bridge。
+主应用同时启动本地 API，默认监听 `http://127.0.0.1:32145`，API token 保存在 `%APPDATA%\CodeIsland\settings.json` 的 `api_token`。
 
 ### 运行测试
 
@@ -167,6 +172,35 @@ AI 工具触发 Hook 事件（当前为 Claude Code 和 Codex）
 ```
 
 `PermissionRequest`、显式需要审批的 `PreToolUse`、带问题 payload 的 `Notification`/`Question*` 会作为阻塞事件等待用户响应。普通事件会先返回 `{}` ack，再异步更新 UI，避免短生命周期 Bridge 过早断开导致事件丢失或管道噪声。
+
+## 本地 Hub API
+
+WPF HUD 是默认客户端；Web、插件、其他本地前端可以通过同一组 localhost API 接入。第一阶段只开放本机访问，不实现 LAN/手机/手表配对。
+
+请求认证支持：
+
+- `Authorization: Bearer <api_token>`
+- `X-CodeIsland-Token: <api_token>`
+- WebSocket 可使用 `ws://127.0.0.1:32145/api/events?token=<api_token>`
+
+当前接口面包括：
+
+- `GET /api/health`
+- `GET /api/capabilities`
+- `GET /api/sources`
+- `POST /api/sources/{source}/install`
+- `POST /api/sources/{source}/uninstall`
+- `POST /api/sources/{source}/repair`
+- `GET /api/runtime-assets`
+- `POST /api/runtime-assets/repair`
+- `GET /api/sessions`
+- `GET /api/sessions/{sessionId}`
+- `GET /api/pending`
+- `POST /api/permissions/{actionId}/allow`
+- `POST /api/permissions/{actionId}/deny`
+- `POST /api/questions/{actionId}/answer`
+- `POST /api/questions/{actionId}/dismiss`
+- `WS /api/events`
 
 ## Hook 安装
 

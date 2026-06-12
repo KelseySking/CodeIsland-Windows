@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using CodeIsland.Hub;
 using CodeIsland.Core.Services;
 using CodeIsland.WpfApp.Services;
 
@@ -11,6 +12,7 @@ namespace CodeIsland.WpfApp.Views;
 public partial class SettingsWindow : Window, INotifyPropertyChanged
 {
     private readonly SettingsManager _settings;
+    private readonly ICodeIslandSourceService _sourceService;
     private bool _autoApproveSafeTools;
     private bool _hideWhenFullscreen;
     private bool _launchAtLogin;
@@ -29,10 +31,11 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private double _volumePercent = 70;
     private string _feedbackText = "设置会自动保存。";
 
-    public SettingsWindow(SettingsManager settings)
+    public SettingsWindow(SettingsManager settings, ICodeIslandSourceService? sourceService = null)
     {
         InitializeComponent();
         _settings = settings;
+        _sourceService = sourceService ?? new ConfigInstallerSourceService();
         _autoApproveSafeTools = _settings.Get("auto_approve_safe_tools", false);
         _hideWhenFullscreen = _settings.Get("hide_when_fullscreen", true);
         _launchAtLogin = WpfStartupManager.IsEnabled();
@@ -382,9 +385,9 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         if (sender is not System.Windows.Controls.Button button || button.Tag is not string source)
             return;
 
-        var installed = ConfigInstaller.IsInstalled(source);
-        var result = installed ? ConfigInstaller.Uninstall(source) : ConfigInstaller.Install(source);
-        FeedbackText = result
+        var installed = _sourceService.GetSourceStatus(source).Installed;
+        var result = installed ? _sourceService.Uninstall(source) : _sourceService.Install(source);
+        FeedbackText = result.Success
             ? $"{GetSourceDisplayName(source)} 已{(installed ? "断开" : "连接")}"
             : $"{GetSourceDisplayName(source)} 连接失败";
         RefreshHookButtons();
@@ -398,9 +401,9 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
     private static string GetSourceDisplayName(string source) => source.Equals("claude", StringComparison.OrdinalIgnoreCase) ? "Claude Code" : "Codex";
 
-    private static void UpdateHookButton(System.Windows.Controls.Button button, string source)
+    private void UpdateHookButton(System.Windows.Controls.Button button, string source)
     {
-        var installed = ConfigInstaller.IsInstalled(source);
+        var installed = _sourceService.GetSourceStatus(source).Installed;
         button.Content = installed ? "断开" : "连接";
         button.Background = installed
             ? System.Windows.Media.Brushes.IndianRed

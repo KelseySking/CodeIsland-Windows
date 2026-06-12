@@ -1,7 +1,9 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using CodeIsland.Core.Services;
+using CodeIsland.Hub;
 using CodeIsland.WpfApp.Services;
 using CodeIsland.WpfApp.ViewModels;
 using CodeIsland.WpfApp.Views;
@@ -12,6 +14,9 @@ public partial class App : System.Windows.Application
 {
     private SettingsManager? _settings;
     private WpfAppState? _appState;
+    private WpfHubStateAdapter? _hubStateAdapter;
+    private ICodeIslandSourceService? _sourceService;
+    private CodeIslandApiHost? _apiHost;
     private WpfHookServer? _hookServer;
     private WpfTrayService? _tray;
     private WpfGlobalHotkey? _hotkey;
@@ -28,10 +33,13 @@ public partial class App : System.Windows.Application
 
         _settings = new SettingsManager();
         var logger = new EventLogger();
-        _ = ConfigInstaller.RepairInstalledHookConfigurations();
+        _sourceService = new ConfigInstallerSourceService();
+        _ = _sourceService.RepairAll();
         _webhookNotifier = new WpfWebhookNotifier(_settings);
         _appState = new WpfAppState(_settings, logger, _webhookNotifier);
         _appState.PlaySoundRequested += OnPlaySoundRequested;
+        _appState.PropertyChanged += OnAppStatePropertyChanged;
+        _hubStateAdapter = new WpfHubStateAdapter(_appState);
         _soundManager = new WpfSoundManager
         {
             Enabled = _settings.Get("sound_enabled", true),
@@ -44,9 +52,33 @@ public partial class App : System.Windows.Application
         _hookServer = new WpfHookServer(_appState, logger);
         _ = _hookServer.StartAsync();
 
+        var apiToken = LocalApiTokenStore.EnsureToken(_settings);
+        var apiPort = Math.Clamp(_settings.Get("api_port", 32145), 1024, 65535);
+        _apiHost = new CodeIslandApiHost(CodeIslandApiOptions.Localhost(apiToken, apiPort), _hubStateAdapter, _sourceService, logger);
+        _ = StartApiHostAsync(logger);
+
         _tray = new WpfTrayService(_hudWindow, ShowSettings, ShowAbout, Shutdown);
         _hotkey = new WpfGlobalHotkey();
         RegisterHotkeys();
+    }
+
+    private async Task StartApiHostAsync(EventLogger logger)
+    {
+        if (_apiHost == null)
+            return;
+
+        try
+        {
+            await _apiHost.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.Write("CodeIslandApiHost", "start-failed", new Dictionary<string, string?>
+            {
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
+        }
     }
 
     private static void ConfigureRendering()
@@ -97,7 +129,7 @@ public partial class App : System.Windows.Application
         if (_settings == null)
             return;
 
-        var window = new SettingsWindow(_settings);
+        var window = new SettingsWindow(_settings, _sourceService);
         if (selectAboutTab)
             window.SelectAboutTab();
         window.HotkeysChangeRequested += TryRegisterHotkeys;
@@ -143,15 +175,44 @@ public partial class App : System.Windows.Application
         }
     }
 
+    private void OnAppStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_apiHost == null || _hubStateAdapter == null)
+            return;
+
+        if (e.PropertyName is nameof(WpfAppState.PendingActionRevision)
+            or nameof(WpfAppState.HasPendingAction)
+            or nameof(WpfAppState.HasPendingPermission)
+            or nameof(WpfAppState.HasPendingQuestion))
+        {
+            _ = _apiHost.Realtime.PublishAsync("pending.updated", _hubStateAdapter.GetPendingActions());
+            return;
+        }
+
+        if (e.PropertyName is nameof(WpfAppState.Sessions)
+            or nameof(WpfAppState.SessionCountText)
+            or nameof(WpfAppState.ActiveStatus)
+            or nameof(WpfAppState.ActiveStatusText)
+            or nameof(WpfAppState.DetailAssistantReply)
+            or nameof(WpfAppState.DetailUserPrompt))
+        {
+            _ = _apiHost.Realtime.PublishAsync("session.updated", _hubStateAdapter.GetSessions());
+        }
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         if (_settings != null)
             _settings.SettingChanged -= OnRuntimeSettingChanged;
         if (_appState != null)
+        {
             _appState.PlaySoundRequested -= OnPlaySoundRequested;
+            _appState.PropertyChanged -= OnAppStatePropertyChanged;
+        }
         _hotkey?.Dispose();
         _tray?.Dispose();
         _hookServer?.Dispose();
+        _apiHost?.Dispose();
         _appState?.Dispose();
         _soundManager?.Dispose();
         _webhookNotifier?.Dispose();

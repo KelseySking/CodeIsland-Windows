@@ -25,6 +25,19 @@ public enum WpfPendingKind
     Question
 }
 
+public sealed record WpfPendingActionState(
+    string ActionId,
+    string Kind,
+    DateTime CreatedAt,
+    string SessionId,
+    string Source,
+    string? ProjectName,
+    string? WorkingDirectory,
+    PermissionRequest? Permission,
+    QuestionData? Question,
+    int CurrentQuestionIndex,
+    string? CurrentAnswerKey);
+
 public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 {
     private static readonly TimeSpan SelectedSessionTranscriptRefreshInterval = TimeSpan.FromMilliseconds(900);
@@ -241,6 +254,145 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private SessionSnapshot? CompletionSession => _completionSessionId != null && _sessions.TryGetValue(_completionSessionId, out var s) ? s : null;
     private IEnumerable<SessionSnapshot> VisibleHudSessions => _sessions.Values.Where(IsVisibleHudSession);
     private int VisibleHudSessionCount => _sessions.Values.Count(IsVisibleHudSession);
+
+    public IReadOnlyList<SessionSnapshot> GetApiSessionSnapshots() =>
+        InvokeOnDispatcher(() => _sessions.Values.Select(static session => session.Clone()).ToList());
+
+    public SessionSnapshot? GetApiSessionSnapshot(string sessionId) =>
+        InvokeOnDispatcher(() => _sessions.TryGetValue(sessionId, out var session) ? session.Clone() : null);
+
+    public IReadOnlyList<WpfPendingActionState> GetApiPendingActions() =>
+        InvokeOnDispatcher(() =>
+        {
+            var pending = new List<WpfPendingActionState>(_permissionQueue.Count + _questionQueue.Count);
+            pending.AddRange(_permissionQueue.Select(ToPendingActionState));
+            pending.AddRange(_questionQueue.Select(ToPendingActionState));
+            return pending.OrderBy(static action => action.CreatedAt).ToList();
+        });
+
+    public WpfPendingActionState? GetApiPendingAction(string actionId) =>
+        InvokeOnDispatcher(() =>
+        {
+            if (FindPermissionById(actionId) is { } permission)
+                return ToPendingActionState(permission);
+            if (FindQuestionById(actionId) is { } question)
+                return ToPendingActionState(question);
+            return null;
+        });
+
+    public bool DismissSessionFromApi(string sessionId) =>
+        InvokeOnDispatcher(() =>
+        {
+            if (!_sessions.ContainsKey(sessionId))
+                return false;
+
+            _removedHudSessionIds.Add(sessionId);
+            if (string.Equals(_selectedSessionId, sessionId, StringComparison.Ordinal))
+            {
+                _selectedSessionId = null;
+                if (_selectedHudItemId?.Equals($"session:{sessionId}", StringComparison.Ordinal) == true)
+                    _selectedHudItemId = null;
+            }
+
+            RefreshAll();
+            return true;
+        });
+
+    public bool ActivateTerminalFromApi(string sessionId) =>
+        InvokeOnDispatcher(() =>
+        {
+            if (!_sessions.ContainsKey(sessionId))
+                return false;
+            JumpToTerminal(sessionId);
+            return true;
+        });
+
+    public bool TryAllowPermissionAction(string actionId, bool always) =>
+        InvokeOnDispatcher(() =>
+        {
+            var pending = FindPermissionById(actionId);
+            if (pending == null || !RemovePermissionById(actionId))
+                return false;
+
+            pending.Completion.TrySetResult(BuildPermissionAllowResponse(pending.Event, pending.Request, always));
+            AdvanceAfterPendingResponse();
+            return true;
+        });
+
+    public bool TryDenyPermissionAction(string actionId, string reason) =>
+        InvokeOnDispatcher(() =>
+        {
+            var pending = FindPermissionById(actionId);
+            if (pending == null || !RemovePermissionById(actionId))
+                return false;
+
+            pending.Completion.TrySetResult(BuildPermissionDenyResponse(pending.Event, reason));
+            AdvanceAfterPendingResponse();
+            return true;
+        });
+
+    public bool TryDismissQuestionAction(string actionId, string reason) =>
+        InvokeOnDispatcher(() =>
+        {
+            var pending = FindQuestionById(actionId);
+            if (pending == null || !RemoveQuestionById(actionId))
+                return false;
+
+            pending.Completion.TrySetResult(BuildQuestionDismissResponse(pending.Event, reason));
+            pending.ClearAnswerState();
+            QuestionAnswer = "";
+            RefreshQuestionOptions();
+            AdvanceAfterPendingResponse();
+            return true;
+        });
+
+    public bool TryAnswerQuestionAction(
+        string actionId,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? answers,
+        string? answer) =>
+        InvokeOnDispatcher(() =>
+        {
+            var pending = FindQuestionById(actionId);
+            if (pending == null)
+                return false;
+
+            if (answers is { Count: > 0 })
+            {
+                foreach (var (key, values) in answers)
+                {
+                    var cleaned = values
+                        .Where(static value => !string.IsNullOrWhiteSpace(value))
+                        .Select(static value => value.Trim())
+                        .ToArray();
+                    if (cleaned.Length > 0)
+                        pending.Answers[key] = cleaned;
+                }
+
+                if (pending.Answers.Count == 0)
+                    return false;
+
+                RemoveQuestionById(pending.ActionId);
+                pending.Completion.TrySetResult(BuildQuestionAnswerResponse(pending));
+                pending.ClearAnswerState();
+                QuestionAnswer = "";
+                RefreshQuestionOptions();
+                AdvanceAfterPendingResponse();
+                return true;
+            }
+
+            if (!TryRecordQuestionAnswer(pending, string.IsNullOrWhiteSpace(answer) ? [] : [answer]))
+                return false;
+            if (AdvanceQuestionIfNeeded(pending))
+                return true;
+
+            RemoveQuestionById(pending.ActionId);
+            pending.Completion.TrySetResult(BuildQuestionAnswerResponse(pending));
+            pending.ClearAnswerState();
+            QuestionAnswer = "";
+            RefreshQuestionOptions();
+            AdvanceAfterPendingResponse();
+            return true;
+        });
 
     private SessionSnapshot? ResolvePrimaryHudSession()
     {
@@ -752,6 +904,12 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         return removed;
     }
 
+    private PendingPermission? FindPermissionById(string actionId) =>
+        _permissionQueue.FirstOrDefault(pending => pending.ActionId == actionId);
+
+    private PendingQuestion? FindQuestionById(string actionId) =>
+        _questionQueue.FirstOrDefault(pending => pending.ActionId == actionId);
+
     private void AdvanceAfterPendingResponse()
     {
         _selectedPendingActionId = null;
@@ -1123,6 +1281,40 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     private static string GetSessionSourceKey(SessionSnapshot? session) =>
         string.IsNullOrWhiteSpace(session?.Source) ? "unknown" : session.Source;
+
+    private WpfPendingActionState ToPendingActionState(PendingPermission pending)
+    {
+        var session = GetSession(pending.Request.SessionId);
+        return new WpfPendingActionState(
+            pending.ActionId,
+            "permission",
+            pending.CreatedAt,
+            pending.Request.SessionId,
+            GetSessionSourceKey(session),
+            GetSessionProjectName(session),
+            session?.WorkingDirectory,
+            pending.Request,
+            Question: null,
+            CurrentQuestionIndex: 0,
+            CurrentAnswerKey: null);
+    }
+
+    private WpfPendingActionState ToPendingActionState(PendingQuestion pending)
+    {
+        var session = GetSession(pending.Question.SessionId);
+        return new WpfPendingActionState(
+            pending.ActionId,
+            "question",
+            pending.CreatedAt,
+            pending.Question.SessionId,
+            GetSessionSourceKey(session),
+            GetSessionProjectName(session),
+            session?.WorkingDirectory,
+            Permission: null,
+            pending.Question,
+            pending.CurrentQuestionIndex,
+            pending.CurrentAnswerKey);
+    }
 
     private static string FormatAge(DateTime createdAt)
     {
@@ -1571,6 +1763,14 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     public event Action<string>? PlaySoundRequested;
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+    private static T InvokeOnDispatcher<T>(Func<T> action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        return dispatcher == null || dispatcher.CheckAccess()
+            ? action()
+            : dispatcher.Invoke(action);
+    }
 
     private sealed record PendingPermission(string ActionId, DateTime CreatedAt, PermissionRequest Request, TaskCompletionSource<string> Completion, HookEvent Event);
 

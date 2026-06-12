@@ -1,11 +1,14 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/CodeIsland.Bridge/CodeIsland.Bridge.csproj" />
+    <Project Path="src/CodeIsland.Contracts/CodeIsland.Contracts.csproj" />
     <Project Path="src/CodeIsland.Core/CodeIsland.Core.csproj" />
+    <Project Path="src/CodeIsland.Hub/CodeIsland.Hub.csproj" />
     <Project Path="src/CodeIsland.WpfApp/CodeIsland.WpfApp.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/CodeIsland.Bridge.Tests/CodeIsland.Bridge.Tests.csproj" />
     <Project Path="tests/CodeIsland.Core.Tests/CodeIsland.Core.Tests.csproj" />
+    <Project Path="tests/CodeIsland.Hub.Tests/CodeIsland.Hub.Tests.csproj" />
   </Folder>
 </Solution>
