@@ -27,19 +27,6 @@ public enum WpfPendingKind
     Question
 }
 
-public sealed record WpfPendingActionState(
-    string ActionId,
-    string Kind,
-    DateTime CreatedAt,
-    string SessionId,
-    string Source,
-    string? ProjectName,
-    string? WorkingDirectory,
-    PermissionRequest? Permission,
-    QuestionData? Question,
-    int CurrentQuestionIndex,
-    string? CurrentAnswerKey);
-
 public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 {
     private static readonly TimeSpan SelectedSessionTranscriptRefreshInterval = TimeSpan.FromMilliseconds(900);
@@ -48,9 +35,8 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private const string NeutralHudSource = "codeisland";
 
     private readonly SettingsManager _settings;
-    private readonly EventLogger? _logger;
     private readonly WpfWebhookNotifier? _webhookNotifier;
-    private readonly CodeIslandHubState? _hubState;
+    private readonly CodeIslandHubState _hubState;
     private readonly Dictionary<string, SessionSnapshot> _sessions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, WpfSessionItemViewModel> _sessionItems = new(StringComparer.Ordinal);
     private readonly HashSet<string> _removedHudSessionIds = new(StringComparer.Ordinal);
@@ -74,10 +60,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private bool _hudQuestionOptionsRefreshPending;
     private bool _hudSessionItemsRefreshPending;
 
-    public WpfAppState(SettingsManager settings, EventLogger? logger = null, WpfWebhookNotifier? webhookNotifier = null, CodeIslandHubState? hubState = null)
+    public WpfAppState(SettingsManager settings, CodeIslandHubState hubState, WpfWebhookNotifier? webhookNotifier = null)
     {
         _settings = settings;
-        _logger = logger;
         _webhookNotifier = webhookNotifier;
         _hubState = hubState;
         ShowSessionListCommand = new RelayCommand(ShowSessionList);
@@ -96,11 +81,8 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         JumpToTerminalCommand = new RelayCommand(parameter => JumpToTerminal(parameter as string));
         SelectedSessionJumpToTerminalCommand = new RelayCommand(() => JumpToTerminal(_selectedSessionId));
         _settings.SettingChanged += OnSettingChanged;
-        if (_hubState != null)
-        {
-            _hubState.StateChanged += OnHubStateChanged;
-            _hubState.TerminalActivationRequested += OnHubTerminalActivationRequested;
-        }
+        _hubState.StateChanged += OnHubStateChanged;
+        _hubState.TerminalActivationRequested += OnHubTerminalActivationRequested;
         StartProcessMonitor();
     }
 
@@ -264,177 +246,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private IEnumerable<SessionSnapshot> VisibleHudSessions => _sessions.Values.Where(IsVisibleHudSession);
     private int VisibleHudSessionCount => _sessions.Values.Count(IsVisibleHudSession);
 
-    public IReadOnlyList<SessionSnapshot> GetApiSessionSnapshots() =>
-        InvokeOnDispatcher(() => _sessions.Values.Select(static session => session.Clone()).ToList());
-
-    public SessionSnapshot? GetApiSessionSnapshot(string sessionId) =>
-        InvokeOnDispatcher(() => _sessions.TryGetValue(sessionId, out var session) ? session.Clone() : null);
-
-    public IReadOnlyList<WpfPendingActionState> GetApiPendingActions() =>
-        InvokeOnDispatcher(() =>
-        {
-            var pending = new List<WpfPendingActionState>(_permissionQueue.Count + _questionQueue.Count);
-            pending.AddRange(_permissionQueue.Select(ToPendingActionState));
-            pending.AddRange(_questionQueue.Select(ToPendingActionState));
-            return pending.OrderBy(static action => action.CreatedAt).ToList();
-        });
-
-    public WpfPendingActionState? GetApiPendingAction(string actionId) =>
-        InvokeOnDispatcher(() =>
-        {
-            if (FindPermissionById(actionId) is { } permission)
-                return ToPendingActionState(permission);
-            if (FindQuestionById(actionId) is { } question)
-                return ToPendingActionState(question);
-            return null;
-        });
-
-    public bool DismissSessionFromApi(string sessionId) =>
-        InvokeOnDispatcher(() =>
-        {
-            if (!_sessions.ContainsKey(sessionId))
-                return false;
-
-            _removedHudSessionIds.Add(sessionId);
-            if (string.Equals(_selectedSessionId, sessionId, StringComparison.Ordinal))
-            {
-                _selectedSessionId = null;
-                if (_selectedHudItemId?.Equals($"session:{sessionId}", StringComparison.Ordinal) == true)
-                    _selectedHudItemId = null;
-            }
-
-            RefreshAll();
-            return true;
-        });
-
-    public bool ActivateTerminalFromApi(string sessionId) =>
-        InvokeOnDispatcher(() =>
-        {
-            if (!_sessions.ContainsKey(sessionId))
-                return false;
-            JumpToTerminal(sessionId);
-            return true;
-        });
-
-    public bool TryAllowPermissionAction(string actionId, bool always) =>
-        InvokeOnDispatcher(() =>
-        {
-            if (_hubState != null)
-            {
-                var success = _hubState.AllowPermission(actionId, always);
-                if (success)
-                    AdvanceAfterPendingResponse();
-                return success;
-            }
-
-            var pending = FindPermissionById(actionId);
-            if (pending == null || !RemovePermissionById(actionId))
-                return false;
-
-            pending.Completion?.TrySetResult(BuildPermissionAllowResponse(pending.Event!, pending.Request, always));
-            AdvanceAfterPendingResponse();
-            return true;
-        });
-
-    public bool TryDenyPermissionAction(string actionId, string reason) =>
-        InvokeOnDispatcher(() =>
-        {
-            if (_hubState != null)
-            {
-                var success = _hubState.DenyPermission(actionId, reason);
-                if (success)
-                    AdvanceAfterPendingResponse();
-                return success;
-            }
-
-            var pending = FindPermissionById(actionId);
-            if (pending == null || !RemovePermissionById(actionId))
-                return false;
-
-            pending.Completion?.TrySetResult(BuildPermissionDenyResponse(pending.Event!, reason));
-            AdvanceAfterPendingResponse();
-            return true;
-        });
-
-    public bool TryDismissQuestionAction(string actionId, string reason) =>
-        InvokeOnDispatcher(() =>
-        {
-            if (_hubState != null)
-            {
-                var success = _hubState.DismissQuestion(actionId, reason);
-                if (success)
-                    AdvanceAfterPendingResponse();
-                return success;
-            }
-
-            var pending = FindQuestionById(actionId);
-            if (pending == null || !RemoveQuestionById(actionId))
-                return false;
-
-            pending.Completion?.TrySetResult(BuildQuestionDismissResponse(pending.Event!, reason));
-            pending.ClearAnswerState();
-            QuestionAnswer = "";
-            RefreshQuestionOptions();
-            AdvanceAfterPendingResponse();
-            return true;
-        });
-
-    public bool TryAnswerQuestionAction(
-        string actionId,
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? answers,
-        string? answer) =>
-        InvokeOnDispatcher(() =>
-        {
-            if (_hubState != null)
-            {
-                var success = _hubState.AnswerQuestion(actionId, new QuestionAnswerRequest(answer, answers));
-                if (success && FindQuestionById(actionId) == null)
-                    AdvanceAfterPendingResponse();
-                return success;
-            }
-
-            var pending = FindQuestionById(actionId);
-            if (pending == null)
-                return false;
-
-            if (answers is { Count: > 0 })
-            {
-                foreach (var (key, values) in answers)
-                {
-                    var cleaned = values
-                        .Where(static value => !string.IsNullOrWhiteSpace(value))
-                        .Select(static value => value.Trim())
-                        .ToArray();
-                    if (cleaned.Length > 0)
-                        pending.Answers[key] = cleaned;
-                }
-
-                if (pending.Answers.Count == 0)
-                    return false;
-
-                RemoveQuestionById(pending.ActionId);
-                pending.Completion?.TrySetResult(BuildQuestionAnswerResponse(pending));
-                pending.ClearAnswerState();
-                QuestionAnswer = "";
-                RefreshQuestionOptions();
-                AdvanceAfterPendingResponse();
-                return true;
-            }
-
-            if (!TryRecordQuestionAnswer(pending, string.IsNullOrWhiteSpace(answer) ? [] : [answer]))
-                return false;
-            if (AdvanceQuestionIfNeeded(pending))
-                return true;
-
-            RemoveQuestionById(pending.ActionId);
-            pending.Completion?.TrySetResult(BuildQuestionAnswerResponse(pending));
-            pending.ClearAnswerState();
-            QuestionAnswer = "";
-            RefreshQuestionOptions();
-            AdvanceAfterPendingResponse();
-            return true;
-        });
-
     private void OnHubStateChanged(object? sender, HubStateChangedEventArgs e)
     {
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
@@ -461,6 +272,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     private void ApplyHubState(HubStateChangedEventArgs change)
     {
+        var previousQuestionCursor = GetCurrentQuestionCursor();
         var previousPendingSignature = BuildPendingSignature();
         var incomingSessionIds = change.Sessions
             .Select(static session => session.SessionId)
@@ -488,6 +300,13 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         }
 
         ReplacePendingProjection(change.PendingActions);
+        var currentQuestionCursor = GetCurrentQuestionCursor();
+        if (!string.Equals(previousQuestionCursor.ActionId, currentQuestionCursor.ActionId, StringComparison.Ordinal) ||
+            !string.Equals(previousQuestionCursor.AnswerKey, currentQuestionCursor.AnswerKey, StringComparison.Ordinal))
+        {
+            QuestionAnswer = "";
+        }
+
         if (!string.Equals(previousPendingSignature, BuildPendingSignature(), StringComparison.Ordinal))
             _pendingActionRevision++;
 
@@ -593,7 +412,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         {
             if (pending.Permission != null)
             {
-                _permissionQueue.Enqueue(new PendingPermission(pending.ActionId, pending.CreatedAt, pending.Permission, Completion: null, Event: null));
+                _permissionQueue.Enqueue(new PendingPermission(pending.ActionId, pending.CreatedAt, pending.Permission));
             }
             else if (pending.Question != null)
             {
@@ -601,8 +420,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
                     pending.ActionId,
                     pending.CreatedAt,
                     pending.Question,
-                    null,
-                    null,
                     pending.CurrentQuestionIndex));
             }
         }
@@ -681,95 +498,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             return null;
 
         return GetSessionAssistantReply(session);
-    }
-
-    public async Task<string> HandleBlockingEventAsync(HookEvent evt, CancellationToken ct)
-    {
-        var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        HandleEvent(evt, completion);
-        try
-        {
-            var seconds = Math.Clamp(_settings.Get("session_timeout", 300), 30, 3600);
-            return await completion.Task.WaitAsync(TimeSpan.FromSeconds(seconds), ct);
-        }
-        catch (TimeoutException)
-        {
-            RemoveCompletion(completion);
-            RefreshAll();
-            return IsQuestionEvent(evt) ? BuildQuestionDismissResponse(evt, "timeout") : BuildPermissionDenyResponse(evt, "timeout");
-        }
-    }
-
-    public void HandleEvent(HookEvent evt) => HandleEvent(evt, null);
-
-    private void HandleEvent(HookEvent evt, TaskCompletionSource<string>? blockingCompletion)
-    {
-        System.Windows.Application.Current.Dispatcher.Invoke(() =>
-        {
-            var sessionId = ResolveSessionId(evt);
-            var existing = sessionId != null && _sessions.TryGetValue(sessionId, out var s) ? s : null;
-            var (newState, effect) = SessionSnapshot.ReduceEvent(existing, evt);
-            newState = ApplyTranscriptMessages(existing, newState);
-            sessionId = newState.SessionId;
-
-            var normalizedEventName = EventNormalizer.NormalizeEventName(newState.Source, evt.EventName);
-            if (ShouldRestoreRemovedHudSession(normalizedEventName, newState.Status))
-                _removedHudSessionIds.Remove(sessionId);
-
-            if (normalizedEventName == "Stop" && effect is SideEffect.None && HasCompletionContent(newState))
-                effect = new SideEffect.PlaySound("complete");
-
-            if (normalizedEventName == "SessionEnd")
-            {
-                RemoveSession(sessionId, "session ended");
-            }
-            else
-            {
-                _sessions[sessionId] = newState;
-                SyncSessionItem(sessionId, newState);
-                _selectedSessionId ??= sessionId;
-            }
-
-            _webhookNotifier?.NotifySessionChanged(newState);
-
-            switch (effect)
-            {
-                case SideEffect.ShowApprovalCard approval when blockingCompletion != null:
-                    if (ShouldAutoApprove(approval.Request))
-                    {
-                        blockingCompletion.TrySetResult(BuildPermissionAllowResponse(evt, approval.Request, always: false));
-                    }
-                    else
-                    {
-                        _permissionQueue.Enqueue(new PendingPermission(NewPendingActionId("permission"), DateTime.UtcNow, approval.Request, blockingCompletion, evt));
-                        _pendingActionRevision++;
-                        ClearCompletionCardForPendingAction();
-                        _webhookNotifier?.NotifyApproval(approval.Request);
-                    }
-                    break;
-                case SideEffect.ShowQuestionCard question when blockingCompletion != null:
-                    _questionQueue.Enqueue(new PendingQuestion(NewPendingActionId("question"), DateTime.UtcNow, question.Question, blockingCompletion, evt));
-                    _pendingActionRevision++;
-                    ClearCompletionCardForPendingAction();
-                    _webhookNotifier?.NotifyQuestion(question.Question);
-                    QuestionAnswer = "";
-                    RefreshQuestionOptions();
-                    break;
-                case SideEffect.PlaySound ps when IsVisibleHudSession(sessionId):
-                    PlaySoundRequested?.Invoke(ps.SoundName);
-                    if (ps.SoundName == "complete")
-                        ShowCompletion(sessionId);
-                    break;
-            }
-
-            if (effect is SideEffect.None && TryUpdateExpandedInlineSessionItemInPlace(sessionId, newState))
-            {
-                UpdateSelectedSessionTranscriptRefresh();
-                return;
-            }
-
-            RefreshAll();
-        });
     }
 
     public void ShowSessionList()
@@ -930,73 +658,42 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     public void Approve(bool always)
     {
-        if (_hubState != null)
-        {
-            var hubPending = GetCurrentPermission();
-            if (hubPending == null) return;
-            if (_hubState.AllowPermission(hubPending.ActionId, always))
-                AdvanceAfterPendingResponse();
+        var pending = GetCurrentPermission();
+        if (pending == null)
             return;
-        }
 
-        var pending = RemoveSelectedOrHeadPermission();
-        if (pending == null) return;
-        pending.Completion?.TrySetResult(BuildPermissionAllowResponse(pending.Event!, pending.Request, always));
-        AdvanceAfterPendingResponse();
+        if (_hubState.AllowPermission(pending.ActionId, always))
+            AdvanceAfterPendingResponse();
     }
 
     public void Deny()
     {
-        if (_hubState != null)
-        {
-            var hubPending = GetCurrentPermission();
-            if (hubPending == null) return;
-            if (_hubState.DenyPermission(hubPending.ActionId, "user denied"))
-                AdvanceAfterPendingResponse();
+        var pending = GetCurrentPermission();
+        if (pending == null)
             return;
-        }
 
-        var pending = RemoveSelectedOrHeadPermission();
-        if (pending == null) return;
-        pending.Completion?.TrySetResult(BuildPermissionDenyResponse(pending.Event!, "user denied"));
-        AdvanceAfterPendingResponse();
+        if (_hubState.DenyPermission(pending.ActionId, "user denied"))
+            AdvanceAfterPendingResponse();
     }
 
     public void DismissPermission()
     {
-        if (_hubState != null)
-        {
-            var hubPending = GetCurrentPermission();
-            if (hubPending == null) return;
-            if (_hubState.DenyPermission(hubPending.ActionId, "dismissed"))
-                AdvanceAfterPendingResponse();
+        var pending = GetCurrentPermission();
+        if (pending == null)
             return;
-        }
 
-        var pending = RemoveSelectedOrHeadPermission();
-        if (pending == null) return;
-        pending.Completion?.TrySetResult(BuildPermissionDenyResponse(pending.Event!, "dismissed"));
-        AdvanceAfterPendingResponse();
+        if (_hubState.DenyPermission(pending.ActionId, "dismissed"))
+            AdvanceAfterPendingResponse();
     }
 
     public void DismissQuestion()
     {
-        if (_hubState != null)
-        {
-            var hubPending = GetCurrentQuestion();
-            if (hubPending == null) return;
-            if (_hubState.DismissQuestion(hubPending.ActionId, "dismissed"))
-                AdvanceAfterPendingResponse();
+        var pending = GetCurrentQuestion();
+        if (pending == null)
             return;
-        }
 
-        var pending = RemoveSelectedOrHeadQuestion();
-        if (pending == null) return;
-        pending.Completion?.TrySetResult(BuildQuestionDismissResponse(pending.Event!, "dismissed"));
-        pending.ClearAnswerState();
-        QuestionAnswer = "";
-        RefreshQuestionOptions();
-        AdvanceAfterPendingResponse();
+        if (_hubState.DismissQuestion(pending.ActionId, "dismissed"))
+            AdvanceAfterPendingResponse();
     }
 
     public void SubmitQuestion(string answer)
@@ -1007,22 +704,12 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             ? QuestionOptions.Where(static option => option.IsSelected).Select(static option => option.ResponseValue).ToArray()
             : [answer];
 
-        if (_hubState != null)
+        if (_hubState.AnswerCurrentQuestion(pending.ActionId, resolvedAnswers, out var resolved))
         {
-            if (_hubState.AnswerCurrentQuestion(pending.ActionId, resolvedAnswers, out var resolved) && resolved)
+            QuestionAnswer = "";
+            if (resolved)
                 AdvanceAfterPendingResponse();
-            return;
         }
-
-        if (!TryRecordQuestionAnswer(pending, resolvedAnswers)) return;
-        if (AdvanceQuestionIfNeeded(pending)) return;
-
-        RemoveQuestionById(pending.ActionId);
-        pending.Completion?.TrySetResult(BuildQuestionAnswerResponse(pending));
-        pending.ClearAnswerState();
-        QuestionAnswer = "";
-        RefreshQuestionOptions();
-        AdvanceAfterPendingResponse();
     }
 
     private void HandleQuestionOption(WpfQuestionOptionViewModel? option)
@@ -1040,48 +727,12 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         var pending = GetCurrentQuestion();
         if (option == null || pending == null) return;
 
-        if (_hubState != null)
+        if (_hubState.AnswerCurrentQuestion(pending.ActionId, [option.ResponseValue], out var resolved))
         {
-            if (_hubState.AnswerCurrentQuestion(pending.ActionId, [option.ResponseValue], out var resolved) && resolved)
+            QuestionAnswer = "";
+            if (resolved)
                 AdvanceAfterPendingResponse();
-            return;
         }
-
-        if (!TryRecordQuestionAnswer(pending, [option.ResponseValue])) return;
-        if (AdvanceQuestionIfNeeded(pending)) return;
-
-        RemoveQuestionById(pending.ActionId);
-        pending.Completion?.TrySetResult(BuildQuestionAnswerResponse(pending));
-        pending.ClearAnswerState();
-        QuestionAnswer = "";
-        RefreshQuestionOptions();
-        AdvanceAfterPendingResponse();
-    }
-
-    private bool TryRecordQuestionAnswer(PendingQuestion pending, IReadOnlyList<string> answers)
-    {
-        var cleanedAnswers = answers
-            .Where(static answer => !string.IsNullOrWhiteSpace(answer))
-            .Select(static answer => answer.Trim())
-            .ToArray();
-        if (cleanedAnswers.Length == 0) return false;
-
-        var key = pending.CurrentAnswerKey;
-        if (string.IsNullOrWhiteSpace(key)) key = "answer";
-        pending.Answers[key] = cleanedAnswers;
-        return true;
-    }
-
-    private bool AdvanceQuestionIfNeeded(PendingQuestion pending)
-    {
-        if (pending.Question.Questions is not { Count: > 0 } questions || pending.CurrentQuestionIndex >= questions.Count - 1)
-            return false;
-
-        pending.CurrentQuestionIndex++;
-        QuestionAnswer = "";
-        RefreshQuestionOptions();
-        RefreshAll();
-        return true;
     }
 
     private void RefreshQuestionOptions()
@@ -1132,60 +783,8 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             : null;
     }
 
-    private PendingPermission? RemoveSelectedOrHeadPermission()
-    {
-        var pending = GetCurrentPermission();
-        if (pending == null) return null;
-        return RemovePermissionById(pending.ActionId) ? pending : null;
-    }
-
-    private PendingQuestion? RemoveSelectedOrHeadQuestion()
-    {
-        var pending = GetCurrentQuestion();
-        if (pending == null) return null;
-        return RemoveQuestionById(pending.ActionId) ? pending : null;
-    }
-
-    private bool RemovePermissionById(string actionId)
-    {
-        var removed = RemoveMatching(_permissionQueue, pending => pending.ActionId == actionId) > 0;
-        if (removed)
-            _pendingActionRevision++;
-        return removed;
-    }
-
-    private bool RemoveQuestionById(string actionId)
-    {
-        var removed = RemoveMatching(_questionQueue, pending => pending.ActionId == actionId) > 0;
-        if (removed)
-            _pendingActionRevision++;
-        return removed;
-    }
-
-    private static int RemoveMatching<T>(Queue<T> queue, Func<T, bool> predicate)
-    {
-        var removed = 0;
-        var retained = new List<T>(queue.Count);
-        while (queue.Count > 0)
-        {
-            var item = queue.Dequeue();
-            if (predicate(item))
-                removed++;
-            else
-                retained.Add(item);
-        }
-
-        foreach (var item in retained)
-            queue.Enqueue(item);
-
-        return removed;
-    }
-
-    private PendingPermission? FindPermissionById(string actionId) =>
-        _permissionQueue.FirstOrDefault(pending => pending.ActionId == actionId);
-
-    private PendingQuestion? FindQuestionById(string actionId) =>
-        _questionQueue.FirstOrDefault(pending => pending.ActionId == actionId);
+    private (string? ActionId, string? AnswerKey) GetCurrentQuestionCursor() =>
+        GetCurrentQuestion() is { } pending ? (pending.ActionId, pending.CurrentAnswerKey) : (null, null);
 
     private void AdvanceAfterPendingResponse()
     {
@@ -1212,18 +811,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         RefreshAll();
     }
 
-    private string? ResolveSessionId(HookEvent evt)
-    {
-        if (!string.IsNullOrWhiteSpace(evt.SessionId)) return evt.SessionId;
-        if (_sessions.Count == 1) return _sessions.Keys.First();
-        if (evt.TrackedPid is { } pid)
-        {
-            var matches = _sessions.Values.Where(s => s.Pid == pid).ToArray();
-            if (matches.Length == 1) return matches[0].SessionId;
-        }
-        return null;
-    }
-
     private void StartProcessMonitor()
     {
         _processMonitorTimer = new System.Threading.Timer(_ =>
@@ -1242,27 +829,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     private void RemoveExitedSessions()
     {
-        if (_hubState != null)
-        {
-            _hubState.RemoveExitedSessions(IsTrackedProcessExited);
-            return;
-        }
-
-        if (_sessions.Count == 0)
-            return;
-
-        var exitedSessionIds = _sessions.Values
-            .Where(IsTrackedProcessExited)
-            .Select(static session => session.SessionId)
-            .ToArray();
-        if (exitedSessionIds.Length == 0)
-            return;
-
-        foreach (var sessionId in exitedSessionIds)
-            RemoveSession(sessionId, "process exited");
-
-        RefreshQuestionOptions();
-        RefreshAll();
+        _hubState.RemoveExitedSessions(IsTrackedProcessExited);
     }
 
     private static bool IsTrackedProcessExited(SessionSnapshot session)
@@ -1310,127 +877,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             startedAtUtc = default;
             return false;
         }
-    }
-
-    private bool RemoveSession(string sessionId, string pendingResponseReason)
-    {
-        var removed = _sessions.Remove(sessionId);
-        removed = _removedHudSessionIds.Remove(sessionId) || removed;
-        if (_sessionItems.ContainsKey(sessionId))
-        {
-            if (IsHudVisualUpdateDeferred)
-            {
-                _deferredSessionItemIds.Add(sessionId);
-                _hudSessionItemsRefreshPending = true;
-                removed = true;
-            }
-            else if (RemoveSessionItemCore(sessionId))
-            {
-                removed = true;
-            }
-        }
-
-        if (RemovePendingActionsForSession(sessionId, pendingResponseReason))
-            removed = true;
-
-        if (_selectedSessionId == sessionId)
-        {
-            _selectedSessionId = null;
-            _selectedHudItemId = null;
-            removed = true;
-        }
-
-        if (_completionSessionId == sessionId)
-        {
-            _completionTimer?.Dispose();
-            _completionTimer = null;
-            _completionSessionId = null;
-            if (SurfaceKind == WpfHudSurfaceKind.CompletionCard)
-                SurfaceKind = WpfHudSurfaceKind.Collapsed;
-        }
-
-        if (SurfaceKind == WpfHudSurfaceKind.HudDetail && _selectedSessionId == null && _selectedPendingActionId == null)
-            SurfaceKind = HasPendingAction || HasSessions ? WpfHudSurfaceKind.SessionList : WpfHudSurfaceKind.Collapsed;
-
-        StopSelectedSessionTranscriptRefresh();
-        return removed;
-    }
-
-    private bool RemovePendingActionsForSession(string sessionId, string reason)
-    {
-        var removed = false;
-        var permissions = _permissionQueue.ToArray();
-        _permissionQueue.Clear();
-        foreach (var pending in permissions)
-        {
-            if (string.Equals(pending.Request.SessionId, sessionId, StringComparison.Ordinal))
-            {
-                pending.Completion?.TrySetResult(BuildPermissionDenyResponse(pending.Event!, reason));
-                ClearSelectedPendingIfMatches(pending.ActionId, WpfHudListItemKind.Permission);
-                removed = true;
-            }
-            else
-            {
-                _permissionQueue.Enqueue(pending);
-            }
-        }
-
-        var questions = _questionQueue.ToArray();
-        _questionQueue.Clear();
-        foreach (var pending in questions)
-        {
-            if (string.Equals(pending.Question.SessionId, sessionId, StringComparison.Ordinal))
-            {
-                pending.Completion?.TrySetResult(BuildQuestionDismissResponse(pending.Event!, reason));
-                ClearSelectedPendingIfMatches(pending.ActionId, WpfHudListItemKind.Question);
-                removed = true;
-            }
-            else
-            {
-                _questionQueue.Enqueue(pending);
-            }
-        }
-
-        if (removed)
-            _pendingActionRevision++;
-        return removed;
-    }
-
-    private void ClearSelectedPendingIfMatches(string actionId, WpfHudListItemKind kind)
-    {
-        if (!string.Equals(_selectedPendingActionId, actionId, StringComparison.Ordinal) || _selectedPendingActionKind != kind)
-            return;
-
-        _selectedHudItemId = null;
-        _selectedPendingActionId = null;
-        _selectedPendingActionKind = null;
-    }
-
-    private static bool IsQuestionEvent(HookEvent evt)
-    {
-        var name = EventNormalizer.NormalizeEventName(evt.Source ?? "unknown", evt.EventName);
-        if (HookToolClassifier.ShouldBlockQuestionTool(evt, name)) return true;
-        if (!name.StartsWith("Question", StringComparison.OrdinalIgnoreCase) && name != "Notification") return false;
-        return ContainsAny(evt.RawJson, "question", "questions") || ContainsAny(evt.ToolInput, "question", "questions");
-    }
-
-    private static bool ContainsAny(JsonElement? element, params string[] names)
-    {
-        if (element is not { ValueKind: JsonValueKind.Object } obj) return false;
-        foreach (var property in obj.EnumerateObject())
-        {
-            if (names.Any(n => string.Equals(n, property.Name, StringComparison.OrdinalIgnoreCase))) return true;
-            if (property.Value.ValueKind == JsonValueKind.Object && ContainsAny(property.Value, names)) return true;
-        }
-        return false;
-    }
-
-    private bool ShouldAutoApprove(PermissionRequest request)
-    {
-        if (!_settings.Get("auto_approve_safe_tools", false))
-            return false;
-
-        return IsSafeReadOnlyPermissionRequest(request);
     }
 
     private void RebuildHudListItems()
@@ -1565,40 +1011,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private static string GetSessionSourceKey(SessionSnapshot? session) =>
         string.IsNullOrWhiteSpace(session?.Source) ? "unknown" : session.Source;
 
-    private WpfPendingActionState ToPendingActionState(PendingPermission pending)
-    {
-        var session = GetSession(pending.Request.SessionId);
-        return new WpfPendingActionState(
-            pending.ActionId,
-            "permission",
-            pending.CreatedAt,
-            pending.Request.SessionId,
-            GetSessionSourceKey(session),
-            GetSessionProjectName(session),
-            session?.WorkingDirectory,
-            pending.Request,
-            Question: null,
-            CurrentQuestionIndex: 0,
-            CurrentAnswerKey: null);
-    }
-
-    private WpfPendingActionState ToPendingActionState(PendingQuestion pending)
-    {
-        var session = GetSession(pending.Question.SessionId);
-        return new WpfPendingActionState(
-            pending.ActionId,
-            "question",
-            pending.CreatedAt,
-            pending.Question.SessionId,
-            GetSessionSourceKey(session),
-            GetSessionProjectName(session),
-            session?.WorkingDirectory,
-            Permission: null,
-            pending.Question,
-            pending.CurrentQuestionIndex,
-            pending.CurrentAnswerKey);
-    }
-
     private static string FormatAge(DateTime createdAt)
     {
         var age = DateTime.UtcNow - createdAt;
@@ -1691,8 +1103,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         var content = BuildPermissionContent(request);
         return content == "等待用户确认" ? request.ToolName ?? "权限请求" : content;
     }
-
-    private static string NewPendingActionId(string prefix) => $"{prefix}-{Guid.NewGuid():N}";
 
     private void SyncSessionItem(string sessionId, SessionSnapshot snapshot)
     {
@@ -1860,23 +1270,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             ? WpfHudListItemKind.Completed
             : WpfHudListItemKind.Running;
 
-    private static bool IsSafeReadOnlyPermissionRequest(PermissionRequest request) =>
-        request.ToolName is "Read" or "Grep" or "Glob" or "LS" or "TodoRead";
-
-    private void RemoveCompletion(TaskCompletionSource<string> completion)
-    {
-        var originalPermissionCount = _permissionQueue.Count;
-        var originalQuestionCount = _questionQueue.Count;
-        var permissions = _permissionQueue.Where(p => p.Completion != completion).ToArray();
-        _permissionQueue.Clear();
-        foreach (var item in permissions) _permissionQueue.Enqueue(item);
-        var questions = _questionQueue.Where(q => q.Completion != completion).ToArray();
-        _questionQueue.Clear();
-        foreach (var item in questions) _questionQueue.Enqueue(item);
-        if (permissions.Length != originalPermissionCount || questions.Length != originalQuestionCount)
-            _pendingActionRevision++;
-    }
-
     private void RefreshAll()
     {
         if (IsHudVisualUpdateDeferred)
@@ -1985,18 +1378,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         return string.Join(Environment.NewLine, ordered.Select(p => $"{p.Key}: {FormatValue(p.Value)}"));
     }
 
-    private static string BuildPermissionAllowResponse(HookEvent evt, PermissionRequest request, bool always) =>
-        HookResponseBuilder.BuildPermissionAllowResponse(evt, request, always);
-
-    private static string BuildPermissionDenyResponse(HookEvent evt, string reason) =>
-        HookResponseBuilder.BuildPermissionDenyResponse(evt, reason);
-
-    private static string BuildQuestionAnswerResponse(PendingQuestion pending) =>
-        HookResponseBuilder.BuildQuestionAnswerResponse(pending.Event!, pending.Question, pending.Answers);
-
-    private static string BuildQuestionDismissResponse(HookEvent evt, string reason) =>
-        HookResponseBuilder.BuildQuestionDismissResponse(evt, reason);
-
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
     {
         if (e.Key is "display_position" or "hud_density_mode")
@@ -2037,11 +1418,8 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     public void Dispose()
     {
         _settings.SettingChanged -= OnSettingChanged;
-        if (_hubState != null)
-        {
-            _hubState.StateChanged -= OnHubStateChanged;
-            _hubState.TerminalActivationRequested -= OnHubTerminalActivationRequested;
-        }
+        _hubState.StateChanged -= OnHubStateChanged;
+        _hubState.TerminalActivationRequested -= OnHubTerminalActivationRequested;
         _disposed = true;
         _completionTimer?.Dispose();
         _processMonitorTimer?.Dispose();
@@ -2060,7 +1438,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             : dispatcher.Invoke(action);
     }
 
-    private sealed record PendingPermission(string ActionId, DateTime CreatedAt, PermissionRequest Request, TaskCompletionSource<string>? Completion, HookEvent? Event);
+    private sealed record PendingPermission(string ActionId, DateTime CreatedAt, PermissionRequest Request);
 
     private sealed class PendingQuestion
     {
@@ -2068,25 +1446,18 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             string actionId,
             DateTime createdAt,
             QuestionData question,
-            TaskCompletionSource<string>? completion,
-            HookEvent? @event,
             int currentQuestionIndex = 0)
         {
             ActionId = actionId;
             CreatedAt = createdAt;
             Question = question;
-            Completion = completion;
-            Event = @event;
             CurrentQuestionIndex = currentQuestionIndex;
         }
 
         public string ActionId { get; }
         public DateTime CreatedAt { get; }
         public QuestionData Question { get; }
-        public TaskCompletionSource<string>? Completion { get; }
-        public HookEvent? Event { get; }
-        public int CurrentQuestionIndex { get; set; }
-        public Dictionary<string, IReadOnlyList<string>> Answers { get; } = new(StringComparer.Ordinal);
+        public int CurrentQuestionIndex { get; }
         public QuestionItem? CurrentItem => Question.Questions is { Count: > 0 } questions
             ? questions[Math.Clamp(CurrentQuestionIndex, 0, questions.Count - 1)]
             : null;
@@ -2094,7 +1465,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         public string CurrentAnswerKey => CurrentItem?.Id ?? Question.Id ?? CurrentQuestionText;
         public bool CurrentMultiSelect => CurrentItem?.MultiSelect ?? Question.MultiSelect;
         public IReadOnlyList<QuestionOption> CurrentOptions => CurrentItem?.Options ?? Question.Options ?? [];
-        public void ClearAnswerState() => Answers.Clear();
     }
 }
 

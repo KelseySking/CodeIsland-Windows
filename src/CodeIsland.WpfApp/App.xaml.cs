@@ -38,7 +38,7 @@ public partial class App : System.Windows.Application
         _hubState = new CodeIslandHubState(ShouldAutoApprovePermission);
         _hubState.RealtimeEventRaised += OnHubRealtimeEventRaised;
         _webhookNotifier = new WpfWebhookNotifier(_settings);
-        _appState = new WpfAppState(_settings, logger, _webhookNotifier, _hubState);
+        _appState = new WpfAppState(_settings, _hubState, _webhookNotifier);
         _appState.PlaySoundRequested += OnPlaySoundRequested;
         _soundManager = new WpfSoundManager
         {
