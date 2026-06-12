@@ -91,6 +91,7 @@ coverage*/
 /.tmp-build/
 /docs/*
 !/docs/runtime-display-contract.md
+!/docs/external-display-client.md
 /AGENTS.md
 /CLAUDE.md
 

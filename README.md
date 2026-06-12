@@ -179,6 +179,8 @@ AI tool triggers a Hook event (currently Claude Code and Codex)
 
 The WPF HUD is the default client. Web, plugin, and other local frontends can use the same localhost API. The first phase is local-only; LAN/mobile/watch pairing is not implemented yet.
 
+For external display development, see `docs/external-display-client.md`. A no-dependency console sample is available at `samples/external-display-console`.
+
 Authentication supports:
 
 - `Authorization: Bearer <api_token>`
@@ -188,6 +190,7 @@ Authentication supports:
 Current API surface:
 
 - `GET /api/health`
+- `GET /api/version`
 - `GET /api/capabilities`
 - `GET /api/sources`
 - `POST /api/sources/{source}/install`
@@ -197,10 +200,12 @@ Current API surface:
 - `POST /api/runtime-assets/repair`
 - `GET /api/sessions`
 - `GET /api/sessions/{sessionId}`
+- `GET /api/sessions/{sessionId}/messages`
 - `GET /api/pending`
 - `POST /api/permissions/{actionId}/allow`
 - `POST /api/permissions/{actionId}/deny`
 - `POST /api/questions/{actionId}/answer`
+- `POST /api/questions/{actionId}/answer-current`
 - `POST /api/questions/{actionId}/dismiss`
 - `WS /api/events`
 

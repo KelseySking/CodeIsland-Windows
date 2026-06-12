@@ -177,6 +177,8 @@ AI 工具触发 Hook 事件（当前为 Claude Code 和 Codex）
 
 WPF HUD 是默认客户端；Web、插件、其他本地前端可以通过同一组 localhost API 接入。第一阶段只开放本机访问，不实现 LAN/手机/手表配对。
 
+外部展示端开发入口见 `docs/external-display-client.md`，无外部依赖的控制台示例位于 `samples/external-display-console`。
+
 请求认证支持：
 
 - `Authorization: Bearer <api_token>`
@@ -186,6 +188,7 @@ WPF HUD 是默认客户端；Web、插件、其他本地前端可以通过同一
 当前接口面包括：
 
 - `GET /api/health`
+- `GET /api/version`
 - `GET /api/capabilities`
 - `GET /api/sources`
 - `POST /api/sources/{source}/install`
@@ -195,10 +198,12 @@ WPF HUD 是默认客户端；Web、插件、其他本地前端可以通过同一
 - `POST /api/runtime-assets/repair`
 - `GET /api/sessions`
 - `GET /api/sessions/{sessionId}`
+- `GET /api/sessions/{sessionId}/messages`
 - `GET /api/pending`
 - `POST /api/permissions/{actionId}/allow`
 - `POST /api/permissions/{actionId}/deny`
 - `POST /api/questions/{actionId}/answer`
+- `POST /api/questions/{actionId}/answer-current`
 - `POST /api/questions/{actionId}/dismiss`
 - `WS /api/events`
 

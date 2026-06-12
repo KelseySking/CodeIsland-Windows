@@ -4,6 +4,11 @@ This document defines the intended boundary between the CodeIsland Runtime and a
 
 The current Windows app still embeds the Runtime library and starts it from `CodeIsland.WpfApp`. The migration direction is to stabilize the library boundary first, then move the Runtime into an independent host process later.
 
+Developer entry points:
+
+* `docs/external-display-client.md` explains how to connect a display client, subscribe to events, and send pending-action operations.
+* `samples/external-display-console/` is a no-dependency .NET console sample that uses the public REST/WebSocket contract.
+
 ## Ownership Boundary
 
 ### Runtime Owns
