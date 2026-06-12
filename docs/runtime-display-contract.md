@@ -2,7 +2,7 @@
 
 This document defines the intended boundary between the CodeIsland Runtime and any display client. A display client can be the current WPF HUD, a web UI, a mobile app, a hardware bridge, or a third-party integration.
 
-The current Windows app still embeds the Runtime inside `CodeIsland.WpfApp`. The migration direction is to stabilize the library boundary first, then move the Runtime into an independent host process later.
+The current Windows app still embeds the Runtime library and starts it from `CodeIsland.WpfApp`. The migration direction is to stabilize the library boundary first, then move the Runtime into an independent host process later.
 
 ## Ownership Boundary
 
@@ -157,7 +157,6 @@ Rules for future changes:
 
 These are known gaps between the desired contract and the current codebase:
 
-* `WpfHookServer` still lives under `CodeIsland.WpfApp`. It should move to the Runtime/Hub boundary.
 * `WpfAppState` still contains legacy hook-handling and pending-action logic. It should become a UI projection over Runtime state.
 * WPF still reads transcript updates directly for selected-session refresh. Runtime should own transcript consumption and expose display-ready messages.
 * `source.statusChanged` currently has more than one payload shape. Display clients should refetch `/sources` until a normalized event payload is introduced.
@@ -168,7 +167,7 @@ These are known gaps between the desired contract and the current codebase:
 Recommended migration order:
 
 1. Stabilize this contract and treat `CodeIsland.Contracts` as the display boundary.
-2. Move hook server implementation from WPF into Runtime/Hub.
+2. Move hook server implementation from WPF into Runtime/Hub. (Completed for the embedded Named Pipe server.)
 3. Collapse duplicated WPF state handling into Runtime-owned state.
 4. Introduce source adapter interfaces behind existing static facades.
 5. Add an independent Runtime host process.

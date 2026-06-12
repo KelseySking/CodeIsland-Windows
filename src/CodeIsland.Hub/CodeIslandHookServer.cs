@@ -4,24 +4,29 @@ using System.Text.Json;
 using CodeIsland.Core.IPC;
 using CodeIsland.Core.Models;
 using CodeIsland.Core.Services;
-using CodeIsland.Hub;
 
-namespace CodeIsland.WpfApp.Services;
+namespace CodeIsland.Hub;
 
-public sealed class WpfHookServer : IDisposable
+public sealed class CodeIslandHookServer : IDisposable
 {
     private const int AcceptParallelism = 4;
     private readonly CodeIslandHubState _hubState;
     private readonly Func<TimeSpan> _timeoutProvider;
     private readonly EventLogger? _logger;
-    private readonly string _pipeName = NamedPipePath.GetPipeName();
+    private readonly string _pipeName;
     private CancellationTokenSource? _cts;
 
-    public WpfHookServer(CodeIslandHubState hubState, Func<TimeSpan> timeoutProvider, EventLogger? logger = null)
+    public CodeIslandHookServer(CodeIslandHubState hubState, Func<TimeSpan> timeoutProvider, EventLogger? logger = null)
+        : this(hubState, timeoutProvider, logger, NamedPipePath.GetPipeName())
+    {
+    }
+
+    internal CodeIslandHookServer(CodeIslandHubState hubState, Func<TimeSpan> timeoutProvider, EventLogger? logger, string pipeName)
     {
         _hubState = hubState;
         _timeoutProvider = timeoutProvider;
         _logger = logger;
+        _pipeName = pipeName;
     }
 
     public Task StartAsync()
@@ -59,7 +64,7 @@ public sealed class WpfHookServer : IDisposable
             catch (Exception ex)
             {
                 pipe?.Dispose();
-                _logger?.Write("WpfHookServer", "accept-error", new Dictionary<string, string?> { ["message"] = ex.Message, ["exception"] = ex.GetType().Name });
+                _logger?.Write("CodeIslandHookServer", "accept-error", new Dictionary<string, string?> { ["message"] = ex.Message, ["exception"] = ex.GetType().Name });
             }
         }
     }
@@ -83,7 +88,7 @@ public sealed class WpfHookServer : IDisposable
             }
             catch (JsonException ex)
             {
-                _logger?.Write("WpfHookServer", "parse-error", new Dictionary<string, string?> { ["message"] = ex.Message });
+                _logger?.Write("CodeIslandHookServer", "parse-error", new Dictionary<string, string?> { ["message"] = ex.Message });
             }
 
             if (evt == null)
@@ -104,14 +109,14 @@ public sealed class WpfHookServer : IDisposable
                 response = "{}";
                 await TryWriteResponseAsync(pipe, response, ct);
                 try { _hubState.HandleEvent(evt); }
-                catch (Exception ex) { _logger?.Write("CodeIslandHubState", "handle-event-error", new Dictionary<string, string?> { ["message"] = ex.Message, ["exception"] = ex.GetType().Name }); }
+                catch (Exception ex) { _logger?.Write(nameof(CodeIslandHubState), "handle-event-error", new Dictionary<string, string?> { ["message"] = ex.Message, ["exception"] = ex.GetType().Name }); }
             }
 
             LogHookResponse(evt, blocking, response);
         }
         catch (Exception ex)
         {
-            _logger?.Write("WpfHookServer", "handle-error", new Dictionary<string, string?> { ["message"] = ex.Message, ["exception"] = ex.GetType().Name });
+            _logger?.Write("CodeIslandHookServer", "handle-error", new Dictionary<string, string?> { ["message"] = ex.Message, ["exception"] = ex.GetType().Name });
         }
         finally
         {
@@ -165,13 +170,13 @@ public sealed class WpfHookServer : IDisposable
     private async Task TryWriteResponseAsync(NamedPipeServerStream pipe, string response, CancellationToken ct)
     {
         try { await MessageProtocol.WriteMessageAsync(pipe, response, ct); }
-        catch (IOException ex) { _logger?.Write("WpfHookServer", "write-response-skip", new Dictionary<string, string?> { ["message"] = ex.Message }); }
+        catch (IOException ex) { _logger?.Write("CodeIslandHookServer", "write-response-skip", new Dictionary<string, string?> { ["message"] = ex.Message }); }
         catch (OperationCanceledException) { }
     }
 
     private void LogHookResponse(HookEvent evt, bool blocking, string response)
     {
-        _logger?.Write("WpfHookServer", "response", new Dictionary<string, string?>
+        _logger?.Write("CodeIslandHookServer", "response", new Dictionary<string, string?>
         {
             ["event"] = EventNormalizer.NormalizeEventName(evt.Source ?? "unknown", evt.EventName),
             ["tool"] = HookToolClassifier.GetToolName(evt),

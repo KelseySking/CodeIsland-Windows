@@ -17,7 +17,7 @@ public partial class App : System.Windows.Application
     private WpfAppState? _appState;
     private ICodeIslandSourceService? _sourceService;
     private CodeIslandApiHost? _apiHost;
-    private WpfHookServer? _hookServer;
+    private CodeIslandHookServer? _hookServer;
     private WpfTrayService? _tray;
     private WpfGlobalHotkey? _hotkey;
     private WpfSoundManager? _soundManager;
@@ -49,7 +49,7 @@ public partial class App : System.Windows.Application
         _hudWindow = new HudWindow(_appState, _settings);
         _hudWindow.ShowNoActivate();
 
-        _hookServer = new WpfHookServer(_hubState, GetSessionTimeout, logger);
+        _hookServer = new CodeIslandHookServer(_hubState, GetSessionTimeout, logger);
         _ = _hookServer.StartAsync();
 
         var apiToken = LocalApiTokenStore.EnsureToken(_settings);
