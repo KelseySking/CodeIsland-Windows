@@ -1,16 +1,17 @@
 using CodeIsland.Core.Models;
+using CodeIsland.Core.Sources;
 
 namespace CodeIsland.Core.Services;
 
 public static class HookResponseBuilder
 {
     public static string BuildPermissionAllowResponse(HookEvent evt, PermissionRequest? request = null, bool always = false) =>
-        IsCodex(evt)
+        CodeIslandSourceAdapterRegistry.Get(evt.Source).PermissionResponseStyle == CodeIslandPermissionResponseStyle.Codex
             ? CodexHookResponseBuilder.BuildPermissionAllowResponse(evt, request, always)
             : ClaudeStyleHookResponseBuilder.BuildPermissionAllowResponse(evt, always);
 
     public static string BuildPermissionDenyResponse(HookEvent evt, string reason) =>
-        IsCodex(evt)
+        CodeIslandSourceAdapterRegistry.Get(evt.Source).PermissionResponseStyle == CodeIslandPermissionResponseStyle.Codex
             ? CodexHookResponseBuilder.BuildPermissionDenyResponse(evt, reason)
             : ClaudeStyleHookResponseBuilder.BuildPermissionDenyResponse(evt, reason);
 
@@ -32,7 +33,4 @@ public static class HookResponseBuilder
         HookToolClassifier.IsCodexRequestUserInput(evt)
             ? CodexHookResponseBuilder.BuildRequestUserInputDismissResponse(evt, reason)
             : LegacyQuestionResponseBuilder.BuildQuestionDismissResponse(reason);
-
-    private static bool IsCodex(HookEvent evt) =>
-        string.Equals(evt.Source, "codex", StringComparison.OrdinalIgnoreCase);
 }

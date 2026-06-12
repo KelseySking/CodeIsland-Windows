@@ -1,3 +1,5 @@
+using CodeIsland.Core.Sources;
+
 namespace CodeIsland.Core.Services;
 
 /// <summary>
@@ -10,35 +12,9 @@ public static class EventNormalizer
     /// </summary>
     public static string NormalizeEventName(string source, string rawEventName)
     {
-        var sourceKey = source.Trim().ToLowerInvariant();
         var rawName = rawEventName.Trim();
-
-        var sourceSpecific = (sourceKey, rawName) switch
-        {
-            // Cursor
-            ("cursor", "beforeSubmitPrompt") => "UserPromptSubmit",
-            ("cursor", "beforeShellExecution") => "PreToolUse",
-            ("cursor", "afterShellExecution") => "PostToolUse",
-            ("cursor", "beforeMcpToolExecution") => "PreToolUse",
-            ("cursor", "afterMcpToolExecution") => "PostToolUse",
-            ("cursor", "subagentStart") => "SubagentStart",
-            ("cursor", "subagentStop") => "SubagentStop",
-
-            // Gemini
-            ("gemini", "BeforeTool") => "PreToolUse",
-            ("gemini", "AfterTool") => "PostToolUse",
-            ("gemini", "BeforeAgent") => "SubagentStart",
-            ("gemini", "AfterAgent") => "SubagentStop",
-
-            // Cline
-            ("cline", "TaskStart") => "SessionStart",
-            ("cline", "TaskResume") => "UserPromptSubmit",
-            ("cline", "TaskComplete") => "Stop",
-
-            _ => null
-        };
-
-        if (sourceSpecific != null)
+        var adapter = CodeIslandSourceAdapterRegistry.Get(source);
+        if (adapter.TryNormalizeEventName(rawName, out var sourceSpecific))
             return sourceSpecific;
 
         return rawName.ToLowerInvariant() switch
