@@ -4,21 +4,23 @@ using System.Text.Json;
 using CodeIsland.Core.IPC;
 using CodeIsland.Core.Models;
 using CodeIsland.Core.Services;
-using CodeIsland.WpfApp.ViewModels;
+using CodeIsland.Hub;
 
 namespace CodeIsland.WpfApp.Services;
 
 public sealed class WpfHookServer : IDisposable
 {
     private const int AcceptParallelism = 4;
-    private readonly WpfAppState _appState;
+    private readonly CodeIslandHubState _hubState;
+    private readonly Func<TimeSpan> _timeoutProvider;
     private readonly EventLogger? _logger;
     private readonly string _pipeName = NamedPipePath.GetPipeName();
     private CancellationTokenSource? _cts;
 
-    public WpfHookServer(WpfAppState appState, EventLogger? logger = null)
+    public WpfHookServer(CodeIslandHubState hubState, Func<TimeSpan> timeoutProvider, EventLogger? logger = null)
     {
-        _appState = appState;
+        _hubState = hubState;
+        _timeoutProvider = timeoutProvider;
         _logger = logger;
     }
 
@@ -94,15 +96,15 @@ public sealed class WpfHookServer : IDisposable
             string response;
             if (blocking)
             {
-                response = await _appState.HandleBlockingEventAsync(evt, ct);
+                response = await _hubState.HandleBlockingEventAsync(evt, _timeoutProvider(), ct);
                 await TryWriteResponseAsync(pipe, response, ct);
             }
             else
             {
                 response = "{}";
                 await TryWriteResponseAsync(pipe, response, ct);
-                try { _appState.HandleEvent(evt); }
-                catch (Exception ex) { _logger?.Write("WpfAppState", "handle-event-error", new Dictionary<string, string?> { ["message"] = ex.Message, ["exception"] = ex.GetType().Name }); }
+                try { _hubState.HandleEvent(evt); }
+                catch (Exception ex) { _logger?.Write("CodeIslandHubState", "handle-event-error", new Dictionary<string, string?> { ["message"] = ex.Message, ["exception"] = ex.GetType().Name }); }
             }
 
             LogHookResponse(evt, blocking, response);

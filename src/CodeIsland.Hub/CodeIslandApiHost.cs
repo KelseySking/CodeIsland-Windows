@@ -140,11 +140,9 @@ public sealed class CodeIslandApiHost : IAsyncDisposable, IDisposable
         api.MapGet("/sessions", _state.GetSessions);
         api.MapGet("/sessions/{sessionId}", (string sessionId) => ToResult(_state.GetSession(sessionId)));
         api.MapGet("/sessions/{sessionId}/messages", (string sessionId) => Results.Ok(_state.GetSessionMessages(sessionId)));
-        api.MapPost("/sessions/{sessionId}/dismiss", async (string sessionId) =>
+        api.MapPost("/sessions/{sessionId}/dismiss", (string sessionId) =>
         {
             var success = _state.DismissSession(sessionId);
-            if (success)
-                await Realtime.PublishAsync("session.removed", new { sessionId });
             return success ? Results.Ok(new { success }) : Results.NotFound(new ApiErrorDto("not_found", "Session not found"));
         });
         api.MapPost("/sessions/{sessionId}/activate-terminal", (string sessionId) =>
@@ -157,20 +155,20 @@ public sealed class CodeIslandApiHost : IAsyncDisposable, IDisposable
         api.MapPost("/permissions/{actionId}/allow", async (string actionId, HttpContext context) =>
         {
             var request = await ReadBodyAsync<PermissionDecisionRequest>(context) ?? new PermissionDecisionRequest();
-            return await RunPendingOperationAsync("pending.resolved", actionId, () => _state.AllowPermission(actionId, request.Always));
+            return await RunPendingOperationAsync(actionId, () => _state.AllowPermission(actionId, request.Always));
         });
         api.MapPost("/permissions/{actionId}/deny", async (string actionId, HttpContext context) =>
         {
             var request = await ReadBodyAsync<PermissionDecisionRequest>(context) ?? new PermissionDecisionRequest();
-            return await RunPendingOperationAsync("pending.resolved", actionId, () => _state.DenyPermission(actionId, request.Reason ?? "user denied"));
+            return await RunPendingOperationAsync(actionId, () => _state.DenyPermission(actionId, request.Reason ?? "user denied"));
         });
         api.MapPost("/questions/{actionId}/answer", async (string actionId, HttpContext context) =>
         {
             var request = await ReadBodyAsync<QuestionAnswerRequest>(context) ?? new QuestionAnswerRequest();
-            return await RunPendingOperationAsync("pending.updated", actionId, () => _state.AnswerQuestion(actionId, request));
+            return await RunPendingOperationAsync(actionId, () => _state.AnswerQuestion(actionId, request));
         });
         api.MapPost("/questions/{actionId}/dismiss", async (string actionId) =>
-            await RunPendingOperationAsync("pending.resolved", actionId, () => _state.DismissQuestion(actionId, "dismissed")));
+            await RunPendingOperationAsync(actionId, () => _state.DismissQuestion(actionId, "dismissed")));
 
         api.Map("/events", async context =>
         {
@@ -193,14 +191,13 @@ public sealed class CodeIslandApiHost : IAsyncDisposable, IDisposable
         return result.Success ? Results.Ok(result) : Results.BadRequest(result);
     }
 
-    private async Task<IResult> RunPendingOperationAsync(string eventType, string actionId, Func<bool> operation)
+    private Task<IResult> RunPendingOperationAsync(string actionId, Func<bool> operation)
     {
         var success = operation();
         if (!success)
-            return Results.NotFound(new ApiErrorDto("not_found", "Pending action not found"));
+            return Task.FromResult<IResult>(Results.NotFound(new ApiErrorDto("not_found", "Pending action not found")));
 
-        await Realtime.PublishAsync(eventType, new { actionId, pending = _state.GetPendingActions() });
-        return Results.Ok(new { success });
+        return Task.FromResult<IResult>(Results.Ok(new { success }));
     }
 
     private static IResult ToResult<T>(T? value) where T : class =>

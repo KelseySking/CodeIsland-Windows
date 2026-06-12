@@ -1,7 +1,7 @@
-using System.ComponentModel;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using CodeIsland.Core.Models;
 using CodeIsland.Core.Services;
 using CodeIsland.Hub;
 using CodeIsland.WpfApp.Services;
@@ -13,8 +13,8 @@ namespace CodeIsland.WpfApp;
 public partial class App : System.Windows.Application
 {
     private SettingsManager? _settings;
+    private CodeIslandHubState? _hubState;
     private WpfAppState? _appState;
-    private WpfHubStateAdapter? _hubStateAdapter;
     private ICodeIslandSourceService? _sourceService;
     private CodeIslandApiHost? _apiHost;
     private WpfHookServer? _hookServer;
@@ -35,11 +35,11 @@ public partial class App : System.Windows.Application
         var logger = new EventLogger();
         _sourceService = new ConfigInstallerSourceService();
         _ = _sourceService.RepairAll();
+        _hubState = new CodeIslandHubState(ShouldAutoApprovePermission);
+        _hubState.RealtimeEventRaised += OnHubRealtimeEventRaised;
         _webhookNotifier = new WpfWebhookNotifier(_settings);
-        _appState = new WpfAppState(_settings, logger, _webhookNotifier);
+        _appState = new WpfAppState(_settings, logger, _webhookNotifier, _hubState);
         _appState.PlaySoundRequested += OnPlaySoundRequested;
-        _appState.PropertyChanged += OnAppStatePropertyChanged;
-        _hubStateAdapter = new WpfHubStateAdapter(_appState);
         _soundManager = new WpfSoundManager
         {
             Enabled = _settings.Get("sound_enabled", true),
@@ -49,12 +49,12 @@ public partial class App : System.Windows.Application
         _hudWindow = new HudWindow(_appState, _settings);
         _hudWindow.ShowNoActivate();
 
-        _hookServer = new WpfHookServer(_appState, logger);
+        _hookServer = new WpfHookServer(_hubState, GetSessionTimeout, logger);
         _ = _hookServer.StartAsync();
 
         var apiToken = LocalApiTokenStore.EnsureToken(_settings);
         var apiPort = Math.Clamp(_settings.Get("api_port", 32145), 1024, 65535);
-        _apiHost = new CodeIslandApiHost(CodeIslandApiOptions.Localhost(apiToken, apiPort), _hubStateAdapter, _sourceService, logger);
+        _apiHost = new CodeIslandApiHost(CodeIslandApiOptions.Localhost(apiToken, apiPort), _hubState, _sourceService, logger);
         _ = StartApiHostAsync(logger);
 
         _tray = new WpfTrayService(_hudWindow, ShowSettings, ShowAbout, Shutdown);
@@ -112,6 +112,20 @@ public partial class App : System.Windows.Application
             out var message);
         System.Diagnostics.Debug.WriteLine($"[WpfGlobalHotkey] {message}");
         return success;
+    }
+
+    private TimeSpan GetSessionTimeout()
+    {
+        var seconds = Math.Clamp(_settings?.Get("session_timeout", 300) ?? 300, 30, 3600);
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private bool ShouldAutoApprovePermission(PermissionRequest request)
+    {
+        if (_settings?.Get("auto_approve_safe_tools", false) != true)
+            return false;
+
+        return request.ToolName is "Read" or "Grep" or "Glob" or "LS" or "TodoRead";
     }
 
     private void ShowSettings()
@@ -175,40 +189,22 @@ public partial class App : System.Windows.Application
         }
     }
 
-    private void OnAppStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnHubRealtimeEventRaised(object? sender, HubRealtimeEventArgs e)
     {
-        if (_apiHost == null || _hubStateAdapter == null)
+        if (_apiHost == null)
             return;
 
-        if (e.PropertyName is nameof(WpfAppState.PendingActionRevision)
-            or nameof(WpfAppState.HasPendingAction)
-            or nameof(WpfAppState.HasPendingPermission)
-            or nameof(WpfAppState.HasPendingQuestion))
-        {
-            _ = _apiHost.Realtime.PublishAsync("pending.updated", _hubStateAdapter.GetPendingActions());
-            return;
-        }
-
-        if (e.PropertyName is nameof(WpfAppState.Sessions)
-            or nameof(WpfAppState.SessionCountText)
-            or nameof(WpfAppState.ActiveStatus)
-            or nameof(WpfAppState.ActiveStatusText)
-            or nameof(WpfAppState.DetailAssistantReply)
-            or nameof(WpfAppState.DetailUserPrompt))
-        {
-            _ = _apiHost.Realtime.PublishAsync("session.updated", _hubStateAdapter.GetSessions());
-        }
+        _ = _apiHost.Realtime.PublishAsync(e.Type, e.Data);
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         if (_settings != null)
             _settings.SettingChanged -= OnRuntimeSettingChanged;
+        if (_hubState != null)
+            _hubState.RealtimeEventRaised -= OnHubRealtimeEventRaised;
         if (_appState != null)
-        {
             _appState.PlaySoundRequested -= OnPlaySoundRequested;
-            _appState.PropertyChanged -= OnAppStatePropertyChanged;
-        }
         _hotkey?.Dispose();
         _tray?.Dispose();
         _hookServer?.Dispose();
