@@ -89,7 +89,8 @@ coverage*/
 /.claude-check-build/
 /.spec-workflow/
 /.tmp-build/
-/docs/
+/docs/*
+!/docs/runtime-display-contract.md
 /AGENTS.md
 /CLAUDE.md
 
