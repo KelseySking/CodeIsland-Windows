@@ -13,6 +13,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\CodeIsland.Bridge\CodeIsland.Bridge.csproj" />
     <ProjectReference Include="..\..\src\CodeIsland.Hub\CodeIsland.Hub.csproj" />
   </ItemGroup>
 </Project>

@@ -81,8 +81,10 @@ if (-not $SkipPublish) {
 
 $appPublish = Join-Path $projectRoot "src\CodeIsland.WpfApp\bin\Release\net8.0-windows\$Runtime\publish"
 $bridgePublish = Join-Path $projectRoot "src\CodeIsland.Bridge\bin\Release\net8.0\$Runtime\publish"
+$runtimeHostPublish = Join-Path $projectRoot "src\CodeIsland.RuntimeHost\bin\Release\net8.0\$Runtime\publish"
 $appExe = Join-Path $appPublish "CodeIsland-Windows.exe"
 $bridgeExe = Join-Path $bridgePublish "CodeIsland.Bridge.exe"
+$runtimeHostExe = Join-Path $runtimeHostPublish "CodeIsland.RuntimeHost.exe"
 
 if (-not (Test-Path $appExe)) {
     throw "App executable not found: $appExe"
@@ -90,6 +92,10 @@ if (-not (Test-Path $appExe)) {
 
 if (-not (Test-Path $bridgeExe)) {
     throw "Bridge executable not found: $bridgeExe"
+}
+
+if (-not (Test-Path $runtimeHostExe)) {
+    throw "Runtime host executable not found: $runtimeHostExe"
 }
 
 $stagingDir = Join-Path $projectRoot ".installer-staging"
@@ -104,6 +110,7 @@ try {
     Write-Host "Copying full publish outputs to installer staging directory..." -ForegroundColor Cyan
     Copy-Item -Path (Join-Path $appPublish "*") -Destination $stagingDir -Recurse -Force
     Copy-Item -Path (Join-Path $bridgePublish "*") -Destination $stagingDir -Recurse -Force
+    Copy-Item -Path (Join-Path $runtimeHostPublish "*") -Destination $stagingDir -Recurse -Force
 
     if (-not (Test-Path $outputPath)) {
         New-Item -ItemType Directory -Path $outputPath | Out-Null

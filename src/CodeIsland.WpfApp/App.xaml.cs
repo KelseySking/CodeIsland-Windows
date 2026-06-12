@@ -13,11 +13,9 @@ namespace CodeIsland.WpfApp;
 public partial class App : System.Windows.Application
 {
     private SettingsManager? _settings;
-    private CodeIslandHubState? _hubState;
+    private CodeIslandRuntimeHost? _runtimeHost;
     private WpfAppState? _appState;
     private ICodeIslandSourceService? _sourceService;
-    private CodeIslandApiHost? _apiHost;
-    private CodeIslandHookServer? _hookServer;
     private WpfTrayService? _tray;
     private WpfGlobalHotkey? _hotkey;
     private WpfSoundManager? _soundManager;
@@ -33,12 +31,14 @@ public partial class App : System.Windows.Application
 
         _settings = new SettingsManager();
         var logger = new EventLogger();
-        _sourceService = new ConfigInstallerSourceService();
-        _ = _sourceService.RepairAll();
-        _hubState = new CodeIslandHubState(ShouldAutoApprovePermission);
-        _hubState.RealtimeEventRaised += OnHubRealtimeEventRaised;
+        _runtimeHost = new CodeIslandRuntimeHost(new CodeIslandRuntimeHostOptions
+        {
+            Settings = _settings,
+            Logger = logger
+        });
+        _sourceService = _runtimeHost.SourceService;
         _webhookNotifier = new WpfWebhookNotifier(_settings);
-        _appState = new WpfAppState(_settings, _hubState, _webhookNotifier);
+        _appState = new WpfAppState(_settings, _runtimeHost.HubState, _webhookNotifier);
         _appState.PlaySoundRequested += OnPlaySoundRequested;
         _soundManager = new WpfSoundManager
         {
@@ -48,32 +48,25 @@ public partial class App : System.Windows.Application
         _settings.SettingChanged += OnRuntimeSettingChanged;
         _hudWindow = new HudWindow(_appState, _settings);
         _hudWindow.ShowNoActivate();
-
-        _hookServer = new CodeIslandHookServer(_hubState, GetSessionTimeout, logger);
-        _ = _hookServer.StartAsync();
-
-        var apiToken = LocalApiTokenStore.EnsureToken(_settings);
-        var apiPort = Math.Clamp(_settings.Get("api_port", 32145), 1024, 65535);
-        _apiHost = new CodeIslandApiHost(CodeIslandApiOptions.Localhost(apiToken, apiPort), _hubState, _sourceService, logger);
-        _ = StartApiHostAsync(logger);
+        _ = StartRuntimeHostAsync(logger);
 
         _tray = new WpfTrayService(_hudWindow, ShowSettings, ShowAbout, Shutdown);
         _hotkey = new WpfGlobalHotkey();
         RegisterHotkeys();
     }
 
-    private async Task StartApiHostAsync(EventLogger logger)
+    private async Task StartRuntimeHostAsync(EventLogger logger)
     {
-        if (_apiHost == null)
+        if (_runtimeHost == null)
             return;
 
         try
         {
-            await _apiHost.StartAsync();
+            await _runtimeHost.StartAsync();
         }
         catch (Exception ex)
         {
-            logger.Write("CodeIslandApiHost", "start-failed", new Dictionary<string, string?>
+            logger.Write("CodeIslandRuntimeHost", "start-failed", new Dictionary<string, string?>
             {
                 ["message"] = ex.Message,
                 ["exception"] = ex.GetType().Name
@@ -112,20 +105,6 @@ public partial class App : System.Windows.Application
             out var message);
         System.Diagnostics.Debug.WriteLine($"[WpfGlobalHotkey] {message}");
         return success;
-    }
-
-    private TimeSpan GetSessionTimeout()
-    {
-        var seconds = Math.Clamp(_settings?.Get("session_timeout", 300) ?? 300, 30, 3600);
-        return TimeSpan.FromSeconds(seconds);
-    }
-
-    private bool ShouldAutoApprovePermission(PermissionRequest request)
-    {
-        if (_settings?.Get("auto_approve_safe_tools", false) != true)
-            return false;
-
-        return request.ToolName is "Read" or "Grep" or "Glob" or "LS" or "TodoRead";
     }
 
     private void ShowSettings()
@@ -189,26 +168,15 @@ public partial class App : System.Windows.Application
         }
     }
 
-    private void OnHubRealtimeEventRaised(object? sender, HubRealtimeEventArgs e)
-    {
-        if (_apiHost == null)
-            return;
-
-        _ = _apiHost.Realtime.PublishAsync(e.Type, e.Data);
-    }
-
     protected override void OnExit(ExitEventArgs e)
     {
         if (_settings != null)
             _settings.SettingChanged -= OnRuntimeSettingChanged;
-        if (_hubState != null)
-            _hubState.RealtimeEventRaised -= OnHubRealtimeEventRaised;
         if (_appState != null)
             _appState.PlaySoundRequested -= OnPlaySoundRequested;
         _hotkey?.Dispose();
         _tray?.Dispose();
-        _hookServer?.Dispose();
-        _apiHost?.Dispose();
+        _runtimeHost?.Dispose();
         _appState?.Dispose();
         _soundManager?.Dispose();
         _webhookNotifier?.Dispose();
