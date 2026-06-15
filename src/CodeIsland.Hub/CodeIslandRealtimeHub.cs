@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using CodeIsland.Contracts;
+using CodeIsland.Core.Services;
 
 namespace CodeIsland.Hub;
 
@@ -10,11 +11,22 @@ public sealed class CodeIslandRealtimeHub
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ConcurrentDictionary<Guid, WebSocket> _sockets = new();
+    private readonly EventLogger? _logger;
+
+    public CodeIslandRealtimeHub(EventLogger? logger = null)
+    {
+        _logger = logger;
+    }
 
     public async Task AcceptAsync(WebSocket socket, CancellationToken ct)
     {
         var id = Guid.NewGuid();
         _sockets[id] = socket;
+        _logger?.Write("CodeIslandRealtimeHub", "client-connected", new Dictionary<string, string?>
+        {
+            ["clientId"] = id.ToString(),
+            ["clientCount"] = _sockets.Count.ToString()
+        });
         var buffer = new byte[1024];
 
         try
@@ -29,6 +41,11 @@ public sealed class CodeIslandRealtimeHub
         finally
         {
             _sockets.TryRemove(id, out _);
+            _logger?.Write("CodeIslandRealtimeHub", "client-disconnected", new Dictionary<string, string?>
+            {
+                ["clientId"] = id.ToString(),
+                ["clientCount"] = _sockets.Count.ToString()
+            });
             if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
                 await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", CancellationToken.None);
             socket.Dispose();
@@ -40,6 +57,11 @@ public sealed class CodeIslandRealtimeHub
         var payload = JsonSerializer.SerializeToUtf8Bytes(
             new HubEventDto(type, DateTimeOffset.UtcNow, data),
             JsonOptions);
+        _logger?.Write("CodeIslandRealtimeHub", "publish", new Dictionary<string, string?>
+        {
+            ["type"] = type,
+            ["clientCount"] = _sockets.Count.ToString()
+        });
         return BroadcastAsync(payload, ct);
     }
 

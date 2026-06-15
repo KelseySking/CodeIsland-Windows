@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
-using CodeIsland.Core.Models;
+using CodeIsland.WpfApp.Models;
 
 namespace CodeIsland.WpfApp.ViewModels;
 

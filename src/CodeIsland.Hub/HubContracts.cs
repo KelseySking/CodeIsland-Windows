@@ -38,5 +38,8 @@ public sealed record CodeIslandApiOptions(
     public static CodeIslandApiOptions Localhost(string token, int port = 32145) =>
         new("127.0.0.1", port, token);
 
+    public static CodeIslandApiOptions Bind(string host, string token, int port = 32145) =>
+        new(string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host.Trim(), port, token);
+
     public string BaseUrl => $"http://{Host}:{Port}";
 }

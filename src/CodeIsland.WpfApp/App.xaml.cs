@@ -1,9 +1,6 @@
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
-using CodeIsland.Core.Models;
-using CodeIsland.Core.Services;
-using CodeIsland.Hub;
 using CodeIsland.WpfApp.Services;
 using CodeIsland.WpfApp.ViewModels;
 using CodeIsland.WpfApp.Views;
@@ -13,10 +10,10 @@ namespace CodeIsland.WpfApp;
 public partial class App : System.Windows.Application
 {
     private SettingsManager? _settings;
-    private CodeIslandRuntimeHost? _runtimeHost;
+    private WpfRuntimeProcessManager? _runtimeManager;
     private IWpfRuntimeClient? _runtimeClient;
     private WpfAppState? _appState;
-    private ICodeIslandSourceService? _sourceService;
+    private IWpfSourceService? _sourceService;
     private WpfTrayService? _tray;
     private WpfGlobalHotkey? _hotkey;
     private WpfSoundManager? _soundManager;
@@ -32,23 +29,8 @@ public partial class App : System.Windows.Application
 
         _settings = new SettingsManager();
         var logger = new EventLogger();
-        var apiPort = Math.Clamp(_settings.Get("api_port", 32145), 1024, 65535);
-        var apiToken = LocalApiTokenStore.EnsureToken(_settings);
-        var useExternalRuntime = string.Equals(_settings.Get("runtime_launch_mode", "embedded"), "external", StringComparison.OrdinalIgnoreCase);
-
-        if (!useExternalRuntime)
-        {
-            _runtimeHost = new CodeIslandRuntimeHost(new CodeIslandRuntimeHostOptions
-            {
-                Settings = _settings,
-                Logger = logger,
-                ApiPort = apiPort,
-                ApiToken = apiToken
-            });
-        }
-
-        var apiBaseUrl = _runtimeHost?.ApiBaseUrl ?? CodeIslandApiOptions.Localhost(apiToken, apiPort).BaseUrl;
-        var runtimeClient = new WpfRuntimeApiClient(apiBaseUrl, apiToken);
+        _runtimeManager = new WpfRuntimeProcessManager(_settings, logger);
+        var runtimeClient = new WpfRuntimeApiClient(_runtimeManager.ApiBaseUrl, _runtimeManager.ApiToken, logger);
         _runtimeClient = runtimeClient;
         _sourceService = runtimeClient;
         _webhookNotifier = new WpfWebhookNotifier(_settings);
@@ -71,15 +53,24 @@ public partial class App : System.Windows.Application
 
     private async Task StartRuntimeAsync(EventLogger logger)
     {
-        if (_runtimeHost != null)
+        if (_runtimeManager != null)
         {
             try
             {
-                await _runtimeHost.StartAsync();
+                logger.Write("WpfRuntime", "ensure-start-begin", new Dictionary<string, string?>
+                {
+                    ["baseUrl"] = _runtimeManager.ApiBaseUrl,
+                    ["mode"] = _settings?.Get("runtime_launch_mode", WpfRuntimeProcessManager.ManagedMode)
+                });
+                await _runtimeManager.EnsureStartedAsync();
+                logger.Write("WpfRuntime", "ensure-start-complete", new Dictionary<string, string?>
+                {
+                    ["ownedRuntime"] = _runtimeManager.OwnsRuntime.ToString()
+                });
             }
             catch (Exception ex)
             {
-                logger.Write("CodeIslandRuntimeHost", "start-failed", new Dictionary<string, string?>
+                logger.Write("WpfRuntimeProcessManager", "start-failed", new Dictionary<string, string?>
                 {
                     ["message"] = ex.Message,
                     ["exception"] = ex.GetType().Name
@@ -208,7 +199,7 @@ public partial class App : System.Windows.Application
         _tray?.Dispose();
         _appState?.Dispose();
         _runtimeClient?.Dispose();
-        _runtimeHost?.Dispose();
+        _runtimeManager?.Dispose();
         _soundManager?.Dispose();
         _webhookNotifier?.Dispose();
         base.OnExit(e);

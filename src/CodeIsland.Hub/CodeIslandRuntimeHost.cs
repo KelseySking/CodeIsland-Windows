@@ -22,6 +22,8 @@ public sealed class CodeIslandRuntimeHostOptions
 
     public int? ApiPort { get; init; }
 
+    public string? ApiHost { get; init; }
+
     public bool RepairSourcesOnStart { get; init; } = true;
 }
 
@@ -42,10 +44,11 @@ public sealed class CodeIslandRuntimeHost : IAsyncDisposable, IDisposable
         PipeName = string.IsNullOrWhiteSpace(options.PipeName) ? CodeIsland.Core.IPC.NamedPipePath.GetPipeName() : options.PipeName.Trim();
         ApiToken = string.IsNullOrWhiteSpace(options.ApiToken) ? LocalApiTokenStore.EnsureToken(Settings) : options.ApiToken.Trim();
         ApiPort = Math.Clamp(options.ApiPort ?? Settings.Get("api_port", 32145), 1024, 65535);
+        ApiHost = NormalizeApiHost(options.ApiHost ?? Settings.Get("api_bind_host", "127.0.0.1"));
 
         HubState = new CodeIslandHubState(options.ShouldAutoApprovePermission ?? ShouldAutoApprovePermission);
         HookServer = new CodeIslandHookServer(HubState, options.SessionTimeoutProvider ?? GetSessionTimeout, Logger, PipeName);
-        ApiHost = new CodeIslandApiHost(CodeIslandApiOptions.Localhost(ApiToken, ApiPort), HubState, SourceService, Logger);
+        ApiHostInstance = new CodeIslandApiHost(CodeIslandApiOptions.Bind(ApiHost, ApiToken, ApiPort), HubState, SourceService, Logger);
         HubState.RealtimeEventRaised += OnHubRealtimeEventRaised;
     }
 
@@ -59,7 +62,9 @@ public sealed class CodeIslandRuntimeHost : IAsyncDisposable, IDisposable
 
     public CodeIslandHookServer HookServer { get; }
 
-    public CodeIslandApiHost ApiHost { get; }
+    public CodeIslandApiHost ApiHostInstance { get; }
+
+    public string ApiHost { get; }
 
     public string PipeName { get; }
 
@@ -67,7 +72,7 @@ public sealed class CodeIslandRuntimeHost : IAsyncDisposable, IDisposable
 
     public int ApiPort { get; }
 
-    public string ApiBaseUrl => ApiHost.BaseUrl;
+    public string ApiBaseUrl => ApiHostInstance.BaseUrl;
 
     public async Task StartAsync(CancellationToken ct = default)
     {
@@ -78,7 +83,7 @@ public sealed class CodeIslandRuntimeHost : IAsyncDisposable, IDisposable
             _ = SourceService.RepairAll();
 
         await HookServer.StartAsync();
-        await ApiHost.StartAsync(ct);
+        await ApiHostInstance.StartAsync(ct);
         StartProcessMonitor();
         _started = true;
     }
@@ -88,7 +93,7 @@ public sealed class CodeIslandRuntimeHost : IAsyncDisposable, IDisposable
         _processMonitorTimer?.Dispose();
         HubState.RealtimeEventRaised -= OnHubRealtimeEventRaised;
         HookServer.Dispose();
-        await ApiHost.DisposeAsync();
+        await ApiHostInstance.DisposeAsync();
     }
 
     public void Dispose()
@@ -96,12 +101,12 @@ public sealed class CodeIslandRuntimeHost : IAsyncDisposable, IDisposable
         _processMonitorTimer?.Dispose();
         HubState.RealtimeEventRaised -= OnHubRealtimeEventRaised;
         HookServer.Dispose();
-        ApiHost.Dispose();
+        ApiHostInstance.Dispose();
     }
 
     private void OnHubRealtimeEventRaised(object? sender, HubRealtimeEventArgs e)
     {
-        _ = ApiHost.Realtime.PublishAsync(e.Type, e.Data);
+        _ = ApiHostInstance.Realtime.PublishAsync(e.Type, e.Data);
     }
 
     private TimeSpan GetSessionTimeout()
@@ -169,5 +174,14 @@ public sealed class CodeIslandRuntimeHost : IAsyncDisposable, IDisposable
             startedAtUtc = default;
             return false;
         }
+    }
+
+    private static string NormalizeApiHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return "127.0.0.1";
+
+        var value = host.Trim();
+        return value is "*" or "+" ? "0.0.0.0" : value;
     }
 }

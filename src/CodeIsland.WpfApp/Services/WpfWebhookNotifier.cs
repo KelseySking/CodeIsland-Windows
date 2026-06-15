@@ -1,7 +1,6 @@
 using System.Net.Http;
 using System.Net.Http.Json;
-using CodeIsland.Core.Models;
-using CodeIsland.Core.Services;
+using CodeIsland.WpfApp.Models;
 
 namespace CodeIsland.WpfApp.Services;
 

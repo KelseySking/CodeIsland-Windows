@@ -1,4 +1,4 @@
-using CodeIsland.Core.Models;
+using CodeIsland.WpfApp.Models;
 
 namespace CodeIsland.WpfApp.ViewModels;
 
@@ -7,7 +7,7 @@ public sealed class WpfHudListGroupViewModel
     public WpfHudListGroupViewModel(string sourceKey, IReadOnlyList<WpfHudListItemViewModel> items)
     {
         SourceKey = string.IsNullOrWhiteSpace(sourceKey) ? "unknown" : sourceKey;
-        SourceDisplayName = SupportedSource.GetDisplayName(SourceKey);
+        SourceDisplayName = WpfSourceDisplay.GetDisplayName(SourceKey);
         SourceIconUri = BuildSourceIconUri(SourceKey);
         CountText = $"{items.Count} 项";
         IconFallbackText = GetFallbackText(SourceDisplayName);
@@ -23,7 +23,7 @@ public sealed class WpfHudListGroupViewModel
 
     private static string BuildSourceIconUri(string sourceKey)
     {
-        var iconName = SupportedSource.GetIconName(sourceKey);
+        var iconName = WpfSourceDisplay.GetIconName(sourceKey);
         return $"pack://application:,,,/Assets/cli-icons/{Uri.EscapeDataString(iconName)}.png";
     }
 

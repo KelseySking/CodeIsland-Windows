@@ -1,8 +1,8 @@
 # CodeIsland Runtime Display Contract
 
-This document defines the intended boundary between the CodeIsland Runtime and any display client. A display client can be the current WPF HUD, a web UI, a mobile app, a hardware bridge, or a third-party integration.
+This document defines the intended boundary between the CodeIsland Runtime and any display client. Runtime is the centralized control plane for CodeIsland: it ingests CLI hook activity from configured sources, normalizes session and pending-action state, and exposes that state to one or more display clients. A display client can be the current WPF HUD, a web UI, a mobile app, a hardware display, or a third-party integration.
 
-The current Windows app still embeds the Runtime library and starts it from `CodeIsland.WpfApp`. The migration direction is to stabilize the library boundary first, then move the Runtime into an independent host process later.
+The current Windows HUD starts or connects to `CodeIsland.RuntimeHost` and consumes Runtime state through the public REST/WebSocket contract. The Runtime source is being extracted into the independent `CodeIsland-Runtime` repository, while the Windows repository remains the official WPF display client.
 
 Developer entry points:
 
@@ -17,12 +17,14 @@ Developer entry points:
 The Runtime is the source of truth for all CLI and agent activity:
 
 * Hook ingestion from CLI tools through the bridge and Named Pipe protocol.
+* Centralized aggregation of configured CLI sources on the host device, with room for future remote-device source adapters.
 * Source-specific hook installation, repair, source capabilities, and runtime assets.
 * Source/event normalization and source-specific hook response formatting.
 * Session lifecycle state, tool history, recent messages, transcript consumption, and process cleanup.
 * Pending permission and question queues.
 * Permission/question resolution, including timeout behavior and response JSON written back to the CLI hook.
 * Local REST API, WebSocket event stream, auth token, and compatibility capabilities.
+* Multi-client fan-out for realtime events. Several display clients may connect at the same time and must observe the same Runtime state.
 
 ### Display Clients Own
 
@@ -33,8 +35,18 @@ Display clients are replaceable presentation layers:
 * Render sessions, pending actions, source status, and runtime assets.
 * Send user actions back through REST, such as allow, deny, answer, dismiss, or activate terminal.
 * Keep display-local state such as selected item, window position, animation state, theme, density, and sound preferences.
+* Optionally manage the lifecycle of a local Runtime process, but only as an operations concern. Display clients must not own Runtime state.
 
 Display clients must not implement hook ingestion, session reducers, pending-action queues, source installation mutation, or source-specific hook response formatting. If a display needs data that is not exposed through the API, the API contract should be extended instead of reading Runtime internals directly.
+
+## Topology Modes
+
+Runtime has two supported topology classes:
+
+* Local managed mode: the official desktop display starts Runtime on `127.0.0.1`, connects to it, and shuts down only the Runtime process that it owns when the display exits.
+* Shared remote mode: Runtime is explicitly bound to a non-loopback host such as `0.0.0.0`, allowing several displays on the LAN or other devices to connect with the API token. In this mode, a display may start Runtime for convenience, but it should not shut Runtime down when that display exits because other clients may still be connected.
+
+Runtime must remain localhost-only by default. Remote/mobile access requires explicit user configuration, token authentication, and later pairing/security hardening. Do not silently bind to LAN addresses.
 
 ## Data Flow
 
@@ -50,7 +62,7 @@ AI CLI hook
   -> CodeIsland.Bridge stdout
 ```
 
-The WPF HUD is currently both a display and the process that starts the embedded Runtime. That is allowed during the library-boundary phase, but WPF should not keep business ownership of hook processing or Runtime state.
+The WPF HUD is currently both a display and the process that may start a managed local Runtime process. That is an operations concern only; WPF must not keep business ownership of hook processing or Runtime state.
 
 ## Authentication
 
@@ -151,6 +163,7 @@ Known event types:
 | `source.statusChanged` | `SourceOperationResultDto` or `SourceDto[]` | Refetch `/sources` for a normalized source snapshot. |
 
 Display clients must tolerate unknown event types. For forward compatibility, a client should log unknown event types and refetch snapshots only when it understands the event family.
+Several WebSocket clients may connect at the same time. Runtime broadcasts every known realtime event to all authorized clients; clients should treat REST snapshots as the recovery source after reconnect.
 
 ## DTO Compatibility Rules
 
@@ -172,6 +185,7 @@ These are known gaps between the desired contract and the current codebase:
 * WPF still reads transcript updates directly for selected-session refresh. Runtime should own transcript consumption and expose display-ready messages.
 * `source.statusChanged` currently has more than one payload shape. Display clients should refetch `/sources` until a normalized event payload is introduced.
 * WPF can embed the Runtime library during transition, but its HUD state and actions now consume the Runtime REST/WebSocket contract. Set `runtime_launch_mode=external` to connect the HUD to an already running standalone Runtime host.
+* Remote/mobile access is not a default-on feature. The Runtime now has a host binding knob, but pairing, token rotation UX, CORS/browser-hosting policy, and remote-device source ingestion need dedicated follow-up tasks.
 
 ## Implementation Sequence
 
@@ -184,4 +198,4 @@ Recommended migration order:
 5. Add an independent Runtime host process.
 6. Convert WPF HUD into an API/WebSocket client.
 7. Publish display-client docs and minimal sample.
-8. Extract Runtime-owned projects into an independent repository per `docs/runtime-repository-split-plan.md`.
+8. Extract Runtime-owned projects into the independent `CodeIsland-Runtime` repository per `docs/runtime-repository-split-plan.md`.

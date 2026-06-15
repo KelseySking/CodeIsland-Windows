@@ -5,18 +5,18 @@ using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text.Json;
 using CodeIsland.Contracts;
-using CodeIsland.Core.Models;
-using CodeIsland.Hub;
+using CodeIsland.WpfApp.Models;
 
 namespace CodeIsland.WpfApp.Services;
 
-public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceService
+public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(2);
     private readonly HttpClient _http;
     private readonly string _baseUrl;
     private readonly string _token;
+    private readonly EventLogger? _logger;
     private readonly CancellationTokenSource _disposeCts = new();
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private readonly object _stateGate = new();
@@ -27,10 +27,11 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
     private bool _started;
     private bool _disposed;
 
-    public WpfRuntimeApiClient(string baseUrl, string token)
+    public WpfRuntimeApiClient(string baseUrl, string token, EventLogger? logger = null)
     {
         _baseUrl = NormalizeBaseUrl(baseUrl);
         _token = token;
+        _logger = logger;
         _http = new HttpClient
         {
             BaseAddress = new Uri($"{_baseUrl}/api/")
@@ -38,7 +39,7 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _token);
     }
 
-    public event EventHandler<HubStateChangedEventArgs>? StateChanged;
+    public event EventHandler<WpfRuntimeStateChangedEventArgs>? StateChanged;
 
     public async Task StartAsync(CancellationToken ct = default)
     {
@@ -46,6 +47,10 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
             return;
 
         _started = true;
+        _logger?.Write("WpfRuntimeApiClient", "start", new Dictionary<string, string?>
+        {
+            ["baseUrl"] = _baseUrl
+        });
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _disposeCts.Token);
         await RefreshSourcesAsync(linkedCts.Token).ConfigureAwait(false);
         await RefreshRuntimeStateAsync(realtimeEventType: null, initial: true, linkedCts.Token).ConfigureAwait(false);
@@ -79,7 +84,14 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
                 ct).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
+            {
+                _logger?.Write("WpfRuntimeApiClient", "answer-current-failed", new Dictionary<string, string?>
+                {
+                    ["actionId"] = actionId,
+                    ["status"] = ((int)response.StatusCode).ToString()
+                });
                 return new QuestionCurrentAnswerResult(false, false);
+            }
 
             var result = await response.Content.ReadFromJsonAsync<QuestionCurrentAnswerResultDto>(JsonOptions, ct).ConfigureAwait(false);
             await RefreshRuntimeStateAsync(result?.Resolved == true ? "pending.resolved" : "pending.updated", initial: false, ct).ConfigureAwait(false);
@@ -87,6 +99,10 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
         }
         catch
         {
+            _logger?.Write("WpfRuntimeApiClient", "answer-current-exception", new Dictionary<string, string?>
+            {
+                ["actionId"] = actionId
+            });
             return new QuestionCurrentAnswerResult(false, false);
         }
     }
@@ -198,8 +214,13 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
             lock (_stateGate)
                 _sources = sources;
         }
-        catch when (!ct.IsCancellationRequested)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
+            _logger?.Write("WpfRuntimeApiClient", "refresh-sources-failed", new Dictionary<string, string?>
+            {
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
         }
     }
 
@@ -234,8 +255,13 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
             var change = BuildStateChangedEvent(previousSessions, previousPendingActions, sessions, pendingActions, realtimeEventType, initial);
             StateChanged?.Invoke(this, change);
         }
-        catch when (!ct.IsCancellationRequested)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
+            _logger?.Write("WpfRuntimeApiClient", "refresh-state-failed", new Dictionary<string, string?>
+            {
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
         }
         finally
         {
@@ -251,11 +277,17 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
             {
                 using var socket = new ClientWebSocket();
                 await socket.ConnectAsync(BuildWebSocketUri(), ct).ConfigureAwait(false);
+                _logger?.Write("WpfRuntimeApiClient", "websocket-connected");
                 await RefreshRuntimeStateAsync(realtimeEventType: null, initial: true, ct).ConfigureAwait(false);
                 await ReceiveWebSocketMessagesAsync(socket, ct).ConfigureAwait(false);
             }
-            catch when (!ct.IsCancellationRequested)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
+                _logger?.Write("WpfRuntimeApiClient", "websocket-reconnect", new Dictionary<string, string?>
+                {
+                    ["message"] = ex.Message,
+                    ["exception"] = ex.GetType().Name
+                });
                 try
                 {
                     await Task.Delay(ReconnectDelay, ct).ConfigureAwait(false);
@@ -312,8 +344,13 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
                 await RefreshRuntimeStateAsync(type, initial: false, ct).ConfigureAwait(false);
             }
         }
-        catch when (!ct.IsCancellationRequested)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
+            _logger?.Write("WpfRuntimeApiClient", "handle-realtime-failed", new Dictionary<string, string?>
+            {
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
         }
     }
 
@@ -323,8 +360,14 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
         {
             return await _http.GetFromJsonAsync<T>(path, JsonOptions, ct).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger?.Write("WpfRuntimeApiClient", "get-json-failed", new Dictionary<string, string?>
+            {
+                ["path"] = path,
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
             return default;
         }
     }
@@ -334,10 +377,25 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
         try
         {
             using var response = await _http.PostAsync(path, content: null, ct).ConfigureAwait(false);
-            return response.IsSuccessStatusCode;
+            var success = response.IsSuccessStatusCode;
+            if (!success)
+            {
+                _logger?.Write("WpfRuntimeApiClient", "post-failed", new Dictionary<string, string?>
+                {
+                    ["path"] = path,
+                    ["status"] = ((int)response.StatusCode).ToString()
+                });
+            }
+            return success;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger?.Write("WpfRuntimeApiClient", "post-exception", new Dictionary<string, string?>
+            {
+                ["path"] = path,
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
             return false;
         }
     }
@@ -347,10 +405,25 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
         try
         {
             using var response = await _http.PostAsJsonAsync(path, body, JsonOptions, ct).ConfigureAwait(false);
-            return response.IsSuccessStatusCode;
+            var success = response.IsSuccessStatusCode;
+            if (!success)
+            {
+                _logger?.Write("WpfRuntimeApiClient", "post-json-failed", new Dictionary<string, string?>
+                {
+                    ["path"] = path,
+                    ["status"] = ((int)response.StatusCode).ToString()
+                });
+            }
+            return success;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger?.Write("WpfRuntimeApiClient", "post-json-exception", new Dictionary<string, string?>
+            {
+                ["path"] = path,
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
             return false;
         }
     }
@@ -375,7 +448,7 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
         return builder.Uri;
     }
 
-    private static HubStateChangedEventArgs BuildStateChangedEvent(
+    private static WpfRuntimeStateChangedEventArgs BuildStateChangedEvent(
         IReadOnlyList<SessionDto> previousSessions,
         IReadOnlyList<PendingActionDto> previousPendingActions,
         IReadOnlyList<SessionDto> sessions,
@@ -387,7 +460,7 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
             ? (SessionId: (string?)null, ActionId: (string?)null, NormalizedEventName: (string?)null, Effect: (SideEffect)new SideEffect.None())
             : DetermineChange(previousSessions, previousPendingActions, sessions, pendingActions);
 
-        return new HubStateChangedEventArgs(
+        return new WpfRuntimeStateChangedEventArgs(
             sessions.Select(MapSession).ToList(),
             pendingActions.Select(MapPendingAction).ToList(),
             change.SessionId,
@@ -458,6 +531,7 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
         {
             SessionId = dto.SessionId,
             Source = dto.Source,
+            SourceDisplayName = dto.SourceDisplayName,
             ProjectName = dto.ProjectName,
             WorkingDirectory = dto.WorkingDirectory,
             Status = status,
@@ -479,7 +553,7 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, ICodeIslandSourceSe
         };
     }
 
-    private static HubPendingActionSnapshot MapPendingAction(PendingActionDto dto) => new(
+    private static WpfPendingActionSnapshot MapPendingAction(PendingActionDto dto) => new(
         dto.ActionId,
         dto.Kind,
         dto.CreatedAtUtc.UtcDateTime,

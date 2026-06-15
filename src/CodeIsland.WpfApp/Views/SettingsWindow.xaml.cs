@@ -3,8 +3,6 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows;
-using CodeIsland.Hub;
-using CodeIsland.Core.Services;
 using CodeIsland.WpfApp.Services;
 
 namespace CodeIsland.WpfApp.Views;
@@ -12,7 +10,7 @@ namespace CodeIsland.WpfApp.Views;
 public partial class SettingsWindow : Window, INotifyPropertyChanged
 {
     private readonly SettingsManager _settings;
-    private readonly ICodeIslandSourceService _sourceService;
+    private readonly IWpfSourceService _sourceService;
     private bool _autoApproveSafeTools;
     private bool _hideWhenFullscreen;
     private bool _launchAtLogin;
@@ -31,11 +29,11 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private double _volumePercent = 70;
     private string _feedbackText = "设置会自动保存。";
 
-    public SettingsWindow(SettingsManager settings, ICodeIslandSourceService? sourceService = null)
+    public SettingsWindow(SettingsManager settings, IWpfSourceService? sourceService = null)
     {
         InitializeComponent();
         _settings = settings;
-        _sourceService = sourceService ?? new ConfigInstallerSourceService();
+        _sourceService = sourceService ?? new UnavailableWpfSourceService();
         _autoApproveSafeTools = _settings.Get("auto_approve_safe_tools", false);
         _hideWhenFullscreen = _settings.Get("hide_when_fullscreen", true);
         _launchAtLogin = WpfStartupManager.IsEnabled();

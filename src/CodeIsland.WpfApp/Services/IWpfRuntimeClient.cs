@@ -1,10 +1,10 @@
-using CodeIsland.Hub;
+using CodeIsland.WpfApp.Models;
 
 namespace CodeIsland.WpfApp.Services;
 
 public interface IWpfRuntimeClient : IDisposable
 {
-    event EventHandler<HubStateChangedEventArgs>? StateChanged;
+    event EventHandler<WpfRuntimeStateChangedEventArgs>? StateChanged;
 
     Task StartAsync(CancellationToken ct = default);
 

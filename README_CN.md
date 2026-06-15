@@ -64,10 +64,11 @@ CodeIsland.Windows/
 │   │   ├── SourceResolver.cs     # AI 工具来源识别
 │   │   └── EnvironmentCollector.cs
 │   ├── CodeIsland.Hub/           # 本地 Hub：CLI 操作接口、source 管理、HTTP/WebSocket API
+│   ├── CodeIsland.RuntimeHost/   # 独立 Runtime 进程，供各类展示客户端连接
 │   └── CodeIsland.WpfApp/        # WPF 主应用
 │       ├── ViewModels/           # WpfAppState 与 HUD 视图模型
 │       ├── Views/                # HUD、会话列表、审批、问答、详情、设置、关于
-│       ├── Services/             # HookServer, HubStateAdapter, TerminalActivator, GlobalHotkey, UpdateChecker
+│       ├── Services/             # RuntimeApiClient, RuntimeProcessManager, TerminalActivator, GlobalHotkey, UpdateChecker
 │       └── Assets/               # 图标、音效
 ├── tests/
 │   ├── CodeIsland.Core.Tests/
@@ -77,7 +78,7 @@ CodeIsland.Windows/
 └── docs/                         # 技术规格、变更日志、硬件/渲染说明
 ```
 
-依赖方向固定为 Bridge/Hub/Core 分层：`CodeIsland.Bridge → CodeIsland.Core`，`CodeIsland.Hub → CodeIsland.Contracts + CodeIsland.Core`，`CodeIsland.WpfApp → CodeIsland.Hub + CodeIsland.Core`。Bridge 仍是短生命周期 Hook adapter；WPF 通过 Hub-facing 接口/API 展示和操作状态。
+Runtime 层正在拆分到独立的 `CodeIsland-Runtime` 仓库。Runtime 内部依赖方向为：`CodeIsland.Bridge -> CodeIsland.Core`，`CodeIsland.Hub -> CodeIsland.Contracts + CodeIsland.Core`，`CodeIsland.RuntimeHost -> CodeIsland.Hub + CodeIsland.Core`。Windows HUD 现在是展示客户端：`CodeIsland.WpfApp -> CodeIsland.Contracts`，发布时再携带 RuntimeHost/Bridge 可执行产物。
 
 ## 快速开始
 
@@ -109,8 +110,8 @@ dotnet build -c Release
 dotnet run --project src/CodeIsland.WpfApp
 ```
 
-启动后会显示 HUD 浮窗，并在托盘区创建 CodeIsland 图标。Hook 事件由 `CodeIsland.Bridge` 作为短生命周期子进程转发到主应用，不需要手动常驻运行 Bridge。
-主应用同时启动本地 API，默认监听 `http://127.0.0.1:32145`，API token 保存在 `%APPDATA%\CodeIsland\settings.json` 的 `api_token`。
+启动后会显示 HUD 浮窗，并在托盘区创建 CodeIsland 图标。在 managed 模式下，HUD 会启动 `CodeIsland.RuntimeHost`，默认监听 `http://127.0.0.1:32145`，并通过 REST/WebSocket 连接 Runtime。Hook 事件由 `CodeIsland.Bridge` 作为短生命周期子进程转发到 Runtime，不需要手动常驻运行 Bridge。
+API token 保存在 `%APPDATA%\CodeIsland\settings.json` 的 `api_token`。
 
 ### 运行测试
 
@@ -164,18 +165,19 @@ AI 工具触发 Hook 事件（当前为 Claude Code 和 Codex）
     → 从 stdin 读取 JSON
     → 采集 Windows 环境变量
     → WMI 查询进程族谱，识别来源 CLI 与跟踪进程
-    → 通过 Named Pipe 发送富化 JSON 到主应用
-      → HookServer 接收并按事件类型路由
-        → 权限请求 / 问答请求 → AppState 等待用户操作并返回 Hook 响应
+    → 通过 Named Pipe 发送富化 JSON 到 CodeIsland.RuntimeHost
+      → Runtime HookServer 接收并按事件类型路由
+        → 权限请求 / 问答请求 → Runtime 等待 REST 操作并返回 Hook 响应
         → 生命周期事件 → SessionSnapshot.ReduceEvent() 计算新状态
-          → AppState 更新全局状态，PanelWindow 渲染 HUD
+          → Runtime 发布 REST 快照和 WebSocket 事件
+            → WPF AppState 投影 Runtime 状态并渲染 HUD
 ```
 
 `PermissionRequest`、显式需要审批的 `PreToolUse`、带问题 payload 的 `Notification`/`Question*` 会作为阻塞事件等待用户响应。普通事件会先返回 `{}` ack，再异步更新 UI，避免短生命周期 Bridge 过早断开导致事件丢失或管道噪声。
 
-## 本地 Hub API
+## Runtime API
 
-WPF HUD 是默认客户端；Web、插件、其他本地前端可以通过同一组 localhost API 接入。第一阶段只开放本机访问，不实现 LAN/手机/手表配对。
+WPF HUD 是默认客户端；Web、插件、手机、硬件屏幕和其他前端都可以通过同一组 token 认证的 Runtime API 接入。Runtime 默认只绑定 `127.0.0.1`。远程访问需要显式设置 `api_bind_host=0.0.0.0`；配对、CORS 和更完整的远程安全体验属于后续任务。
 
 外部展示端开发入口见 `docs/external-display-client.md`，无外部依赖的控制台示例位于 `samples/external-display-console`。
 

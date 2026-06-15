@@ -11,6 +11,22 @@ $appPublish = Join-Path $projectRoot "src\CodeIsland.WpfApp\bin\Release\net8.0-w
 $bridgePublish = Join-Path $projectRoot "src\CodeIsland.Bridge\bin\Release\net8.0\$Runtime\publish"
 $runtimeHostPublish = Join-Path $projectRoot "src\CodeIsland.RuntimeHost\bin\Release\net8.0\$Runtime\publish"
 
+function Write-RuntimeManifest {
+    param(
+        [string]$RuntimeDir,
+        [string]$RuntimeVersion
+    )
+
+    $manifest = [ordered]@{
+        runtimeVersion = $RuntimeVersion
+        contractVersion = "1"
+        hostExe = "CodeIsland.RuntimeHost.exe"
+        bridgeExe = "CodeIsland.Bridge.exe"
+        defaultPort = 32145
+    }
+    $manifest | ConvertTo-Json | Set-Content -Path (Join-Path $RuntimeDir "runtime-manifest.json") -Encoding UTF8
+}
+
 if (-not (Test-Path $appPublish)) {
     Write-Host "App publish directory not found: $appPublish" -ForegroundColor Red
     Write-Host "Run publish-single-file.ps1 first." -ForegroundColor Yellow
@@ -57,8 +73,10 @@ if (-not (Test-Path $runtimeHostSource)) {
 }
 
 Copy-Item -Path (Join-Path $appPublish "*") -Destination $stagingDir -Recurse -Force
-Copy-Item -Path (Join-Path $bridgePublish "*") -Destination $stagingDir -Recurse -Force
-Copy-Item -Path (Join-Path $runtimeHostPublish "*") -Destination $stagingDir -Recurse -Force
+$runtimeCurrentDir = Join-Path $stagingDir "runtime\current"
+New-Item -ItemType Directory -Path $runtimeCurrentDir | Out-Null
+Copy-Item -Path (Join-Path $bridgePublish "*") -Destination $runtimeCurrentDir -Recurse -Force
+Copy-Item -Path (Join-Path $runtimeHostPublish "*") -Destination $runtimeCurrentDir -Recurse -Force
 
 $outputPath = Join-Path $projectRoot $OutputDir
 if (-not (Test-Path $outputPath)) {
@@ -70,6 +88,7 @@ $versionInfo = (Get-Item -LiteralPath $stagedAppExe).VersionInfo
 $version = $versionInfo.ProductVersion
 if (-not $version) { $version = $versionInfo.FileVersion }
 if (-not $version) { $version = "0.0.0" }
+Write-RuntimeManifest -RuntimeDir $runtimeCurrentDir -RuntimeVersion $version
 
 $zipName = "CodeIsland-Windows-$Runtime-v$version.zip"
 $zipPath = Join-Path $outputPath $zipName

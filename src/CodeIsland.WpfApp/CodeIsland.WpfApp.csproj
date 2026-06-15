@@ -16,8 +16,7 @@
     <EnableDefaultApplicationDefinition>true</EnableDefaultApplicationDefinition>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\CodeIsland.Core\CodeIsland.Core.csproj" />
-    <ProjectReference Include="..\CodeIsland.Hub\CodeIsland.Hub.csproj" />
+    <ProjectReference Include="..\CodeIsland.Contracts\CodeIsland.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\app.ico" />

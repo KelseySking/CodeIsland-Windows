@@ -12,7 +12,7 @@ Runtime 默认监听本机地址：
 http://127.0.0.1:32145
 ```
 
-WPF 主应用运行时会启动内嵌 Runtime，并把本地 API token 写入：
+WPF HUD 在 managed 模式下会启动 `CodeIsland.RuntimeHost`，并把本地 API token 写入：
 
 ```text
 %APPDATA%\CodeIsland\settings.json

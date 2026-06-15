@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using CodeIsland.Core.Models;
-using CodeIsland.Core.Services;
+using CodeIsland.WpfApp.Models;
+using CodeIsland.WpfApp.Services;
 
 namespace CodeIsland.WpfApp.ViewModels;
 
@@ -17,9 +17,9 @@ public sealed class WpfSessionItemViewModel : INotifyPropertyChanged
     }
 
     public string SessionId => _snapshot.SessionId;
-    public string Title => _snapshot.ProjectName ?? _snapshot.WorkingDirectory ?? SupportedSource.GetDisplayName(_snapshot.Source);
+    public string Title => _snapshot.ProjectName ?? _snapshot.WorkingDirectory ?? WpfSourceDisplay.GetDisplayName(_snapshot.Source, _snapshot.SourceDisplayName);
     public string SourceKey => _snapshot.Source;
-    public string Source => SupportedSource.GetDisplayName(_snapshot.Source);
+    public string Source => WpfSourceDisplay.GetDisplayName(_snapshot.Source, _snapshot.SourceDisplayName);
     public string TimeText => LastUpdatedAt.ToString("HH:mm");
     public string StatusText => _snapshot.Status switch
     {

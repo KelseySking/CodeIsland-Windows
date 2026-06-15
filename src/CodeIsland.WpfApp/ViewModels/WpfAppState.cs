@@ -4,9 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Windows.Input;
 using CodeIsland.Contracts;
-using CodeIsland.Hub;
-using CodeIsland.Core.Models;
-using CodeIsland.Core.Services;
+using CodeIsland.WpfApp.Models;
 using CodeIsland.WpfApp.Services;
 
 namespace CodeIsland.WpfApp.ViewModels;
@@ -176,10 +174,10 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     public string PermissionDescription => GetCurrentPermission()?.Request is { } p ? BuildPermissionContent(p) : "";
     public string PermissionCommand => GetCurrentPermission()?.Request is { } p ? BuildPermissionContent(p) : "等待用户确认";
     public string PermissionProject => GetCurrentPermission() is { } p && _sessions.TryGetValue(p.Request.SessionId, out var s) ? s.ProjectName ?? s.WorkingDirectory ?? "未知项目" : "未知项目";
-    public string PermissionSource => GetCurrentPermission() is { } p && _sessions.TryGetValue(p.Request.SessionId, out var s) ? SupportedSource.GetDisplayName(s.Source) : "未知工具";
+    public string PermissionSource => GetCurrentPermission() is { } p && _sessions.TryGetValue(p.Request.SessionId, out var s) ? WpfSourceDisplay.GetDisplayName(s.Source, s.SourceDisplayName) : "未知工具";
     public string PermissionWorkDir => GetCurrentPermission() is { } p && _sessions.TryGetValue(p.Request.SessionId, out var s) ? s.WorkingDirectory ?? s.ProjectName ?? "未知路径" : "未知路径";
     public string QuestionTitle => GetCurrentQuestion() is { } q ? q.CurrentItem?.Header ?? q.Question.Header ?? "需要你的回答" : "需要你的回答";
-    public string QuestionSource => GetCurrentQuestion() is { } q && _sessions.TryGetValue(q.Question.SessionId, out var s) ? SupportedSource.GetDisplayName(s.Source) : "未知工具";
+    public string QuestionSource => GetCurrentQuestion() is { } q && _sessions.TryGetValue(q.Question.SessionId, out var s) ? WpfSourceDisplay.GetDisplayName(s.Source, s.SourceDisplayName) : "未知工具";
     public string QuestionProject => GetCurrentQuestion() is { } q && _sessions.TryGetValue(q.Question.SessionId, out var s) ? s.ProjectName ?? s.WorkingDirectory ?? "未知项目" : "未知项目";
     public string QuestionText => GetCurrentQuestion() is { } q ? q.CurrentItem?.Question ?? q.Question.Question : "";
     public string QuestionHeader => GetCurrentQuestion() is { } q ? q.CurrentItem?.Header ?? q.Question.Header ?? "" : "";
@@ -211,8 +209,8 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     public string DetailUserPrompt => FormatRecentMessage(SelectedSnapshot?.LastUserPrompt, "暂无用户问题");
     public string DetailAssistantReplyTitle => $"{SelectedSession?.Source ?? "AI"} 回复";
     public string DetailAssistantReply => FormatRecentMessage(GetSelectedSessionAssistantReply(), $"暂无 {SelectedSession?.Source ?? "AI"} 回复");
-    public string CompletionTitle => CompletionSession == null ? "回复已完成" : $"{SupportedSource.GetDisplayName(CompletionSession.Source)} 回复已完成";
-    public string CompletionSource => CompletionSession == null ? "未知工具" : SupportedSource.GetDisplayName(CompletionSession.Source);
+    public string CompletionTitle => CompletionSession == null ? "回复已完成" : $"{WpfSourceDisplay.GetDisplayName(CompletionSession.Source, CompletionSession.SourceDisplayName)} 回复已完成";
+    public string CompletionSource => CompletionSession == null ? "未知工具" : WpfSourceDisplay.GetDisplayName(CompletionSession.Source, CompletionSession.SourceDisplayName);
     public string CompletionProject => CompletionSession?.ProjectName ?? CompletionSession?.WorkingDirectory ?? "未知项目";
     public string CompletionUserPrompt => FormatRecentMessage(CompletionSession?.LastUserPrompt, "");
     public bool HasCompletionUserPrompt => !string.IsNullOrWhiteSpace(CompletionUserPrompt);
@@ -240,7 +238,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private IEnumerable<SessionSnapshot> VisibleHudSessions => _sessions.Values.Where(IsVisibleHudSession);
     private int VisibleHudSessionCount => _sessions.Values.Count(IsVisibleHudSession);
 
-    private void OnHubStateChanged(object? sender, HubStateChangedEventArgs e)
+    private void OnHubStateChanged(object? sender, WpfRuntimeStateChangedEventArgs e)
     {
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
         if (dispatcher != null && !dispatcher.CheckAccess())
@@ -252,7 +250,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         ApplyHubState(e);
     }
 
-    private void ApplyHubState(HubStateChangedEventArgs change)
+    private void ApplyHubState(WpfRuntimeStateChangedEventArgs change)
     {
         var previousQuestionCursor = GetCurrentQuestionCursor();
         var previousPendingSignature = BuildPendingSignature();
@@ -385,7 +383,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void ReplacePendingProjection(IReadOnlyList<HubPendingActionSnapshot> pendingActions)
+    private void ReplacePendingProjection(IReadOnlyList<WpfPendingActionSnapshot> pendingActions)
     {
         _permissionQueue.Clear();
         _questionQueue.Clear();
@@ -947,7 +945,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         session?.ProjectName ?? session?.WorkingDirectory ?? "未知项目";
 
     private static string GetSessionSourceDisplayName(SessionSnapshot? session) =>
-        session != null ? SupportedSource.GetDisplayName(session.Source) : "未知工具";
+        session != null ? WpfSourceDisplay.GetDisplayName(session.Source, session.SourceDisplayName) : "未知工具";
 
     private static string GetSessionSourceKey(SessionSnapshot? session) =>
         string.IsNullOrWhiteSpace(session?.Source) ? "unknown" : session.Source;
@@ -965,7 +963,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     private string FormatSessionAssistantReply(SessionSnapshot? session)
     {
-        var source = session == null ? "AI" : SupportedSource.GetDisplayName(session.Source);
+        var source = session == null ? "AI" : WpfSourceDisplay.GetDisplayName(session.Source, session.SourceDisplayName);
         return FormatRecentMessage(GetSessionAssistantReply(session), $"暂无 {source} 回复");
     }
 
@@ -1101,17 +1099,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         var startPosition = existing?.TranscriptPath == snapshot.TranscriptPath
             ? existing.TranscriptPosition
             : 0;
-        var result = TranscriptMessageReader.ReadNewMessages(snapshot.TranscriptPath, startPosition);
-        if (result.Position == startPosition && result.Messages.Count == 0)
-            return snapshot;
-
-        var clone = snapshot.Clone();
-        clone.TranscriptPosition = result.Position;
-        foreach (var message in result.Messages)
-            SessionSnapshot.AddRecentMessage(clone, message);
-
-        clone.CompletionText ??= clone.LastAssistantMessage;
-        return clone;
+        return snapshot;
     }
 
     public bool RefreshSelectedSessionTranscriptForCurrentDetail()

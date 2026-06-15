@@ -69,7 +69,7 @@ CodeIsland.Windows/
 │   └── CodeIsland.WpfApp/        # WPF main application
 │       ├── ViewModels/           # WpfAppState and HUD view models
 │       ├── Views/                # HUD, session list, approvals, Q&A, details, settings, about
-│       ├── Services/             # HookServer, HubStateAdapter, TerminalActivator, GlobalHotkey, UpdateChecker
+│       ├── Services/             # RuntimeApiClient, RuntimeProcessManager, TerminalActivator, GlobalHotkey, UpdateChecker
 │       └── Assets/               # Icons and sound effects
 ├── tests/
 │   ├── CodeIsland.Core.Tests/
@@ -79,7 +79,7 @@ CodeIsland.Windows/
 └── docs/                         # Technical specs, changelog, hardware/rendering notes
 ```
 
-The dependency direction is layered around Bridge/Hub/Core: `CodeIsland.Bridge → CodeIsland.Core`, `CodeIsland.Hub → CodeIsland.Contracts + CodeIsland.Core`, `CodeIsland.RuntimeHost → CodeIsland.Hub + CodeIsland.Core`, and `CodeIsland.WpfApp → CodeIsland.Hub + CodeIsland.Core`. Bridge remains the short-lived Hook adapter; WPF displays and operates state through Hub-facing interfaces/API. The planned independent Runtime repository split is documented in `docs/runtime-repository-split-plan.md`.
+The Runtime layer is being split into the independent `CodeIsland-Runtime` repository. Its internal dependency direction is `CodeIsland.Bridge -> CodeIsland.Core`, `CodeIsland.Hub -> CodeIsland.Contracts + CodeIsland.Core`, and `CodeIsland.RuntimeHost -> CodeIsland.Hub + CodeIsland.Core`. The Windows HUD is now a display client: `CodeIsland.WpfApp -> CodeIsland.Contracts`, plus RuntimeHost/Bridge executable artifacts at package time. The split plan is documented in `docs/runtime-repository-split-plan.md`.
 
 ## Quick Start
 
@@ -112,8 +112,8 @@ dotnet run --project src/CodeIsland.WpfApp
 
 ```
 
-After startup, the HUD floating window is shown and a CodeIsland icon is created in the system tray. Hook events are forwarded to the main application by `CodeIsland.Bridge` as a short-lived child process. You do not need to keep Bridge running manually.
-The main application also starts a local API at `http://127.0.0.1:32145` by default. The API token is stored as `api_token` in `%APPDATA%\CodeIsland\settings.json`.
+After startup, the HUD floating window is shown and a CodeIsland icon is created in the system tray. In managed mode, the HUD starts `CodeIsland.RuntimeHost` on `http://127.0.0.1:32145` and connects to it through REST/WebSocket. Hook events are forwarded to Runtime by `CodeIsland.Bridge` as a short-lived child process. You do not need to keep Bridge running manually.
+The API token is stored as `api_token` in `%APPDATA%\CodeIsland\settings.json`.
 
 ### Run tests
 
@@ -167,18 +167,19 @@ AI tool triggers a Hook event (currently Claude Code and Codex)
     → Read JSON from stdin
     → Collect Windows environment variables
     → Query process ancestry through WMI to identify the source CLI and tracked process
-    → Send enriched JSON to the main application through Named Pipe
-      → HookServer receives and routes by event type
-        → Permission request / Q&A request → AppState waits for user action and returns the Hook response
+    → Send enriched JSON to CodeIsland.RuntimeHost through Named Pipe
+      → Runtime HookServer receives and routes by event type
+        → Permission request / Q&A request → Runtime waits for a REST action and returns the Hook response
         → Lifecycle event → SessionSnapshot.ReduceEvent() computes the new state
-          → AppState updates global state, PanelWindow renders the HUD
+          → Runtime publishes REST snapshots and WebSocket events
+            → WPF AppState projects Runtime state and renders the HUD
 ```
 
 `PermissionRequest`, `PreToolUse` events that explicitly require approval, and `Notification`/`Question*` events with question payloads are treated as blocking events and wait for user responses. Normal events first return a `{}` ack and then update the UI asynchronously, avoiding event loss or pipe noise caused by the short-lived Bridge disconnecting too early.
 
-## Local Hub API
+## Runtime API
 
-The WPF HUD is the default client. Web, plugin, and other local frontends can use the same localhost API. The first phase is local-only; LAN/mobile/watch pairing is not implemented yet.
+The WPF HUD is the default client. Web, plugin, mobile, hardware, and other frontends can use the same token-authenticated Runtime API. Runtime binds to `127.0.0.1` by default. Remote access is explicit through `api_bind_host=0.0.0.0`; pairing, CORS, and stronger remote-security UX are follow-up work.
 
 For external display development, see `docs/external-display-client.md`. A no-dependency console sample is available at `samples/external-display-console`.
 The Runtime/HUD repository split plan is in `docs/runtime-repository-split-plan.md`.

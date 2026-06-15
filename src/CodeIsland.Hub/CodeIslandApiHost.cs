@@ -28,7 +28,7 @@ public sealed class CodeIslandApiHost : IAsyncDisposable, IDisposable
         _state = state;
         _sources = sources;
         _logger = logger;
-        Realtime = realtime ?? new CodeIslandRealtimeHub();
+        Realtime = realtime ?? new CodeIslandRealtimeHub(logger);
     }
 
     public CodeIslandRealtimeHub Realtime { get; }
@@ -105,7 +105,7 @@ public sealed class CodeIslandApiHost : IAsyncDisposable, IDisposable
         var api = app.MapGroup("/api");
 
         api.MapGet("/health", () => new ApiHealthDto("ok", StartedAtUtc));
-        api.MapGet("/version", () => new ApiVersionDto("CodeIsland-Windows", typeof(CodeIslandApiHost).Assembly.GetName().Version?.ToString() ?? "unknown"));
+        api.MapGet("/version", () => new ApiVersionDto("CodeIsland Runtime", typeof(CodeIslandApiHost).Assembly.GetName().Version?.ToString() ?? "unknown"));
         api.MapGet("/capabilities", () => new ApiCapabilitiesDto(
             HookInjection: true,
             Approval: true,
@@ -113,7 +113,7 @@ public sealed class CodeIslandApiHost : IAsyncDisposable, IDisposable
             Transcript: true,
             Realtime: true,
             RealtimeProtocols: ["websocket"],
-            SecurityMode: "localhost-token"));
+            SecurityMode: IsLoopbackHost(_options.Host) ? "localhost-token" : "remote-token"));
 
         api.MapGet("/sources", _sources.GetSources);
         api.MapGet("/sources/{source}", (string source) => _sources.GetSourceStatus(source));
@@ -230,6 +230,11 @@ public sealed class CodeIslandApiHost : IAsyncDisposable, IDisposable
             return default;
         }
     }
+
+    private static bool IsLoopbackHost(string host) =>
+        host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+        host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+        host.Equals("::1", StringComparison.OrdinalIgnoreCase);
 
     public async ValueTask DisposeAsync()
     {

@@ -1,6 +1,7 @@
 #define AppName "CodeIsland-Windows"
 #define MainExeName "CodeIsland-Windows.exe"
 #define BridgeExeName "CodeIsland.Bridge.exe"
+#define RuntimeHostExeName "CodeIsland.RuntimeHost.exe"
 #define AppGuid "B8A0E8F8-36A9-44B9-BD1A-E81EBC8E58C9"
 #define AppIdValue "{{B8A0E8F8-36A9-44B9-BD1A-E81EBC8E58C9}"
 #define UninstallRegKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{" + AppGuid + "}_is1"
@@ -36,7 +37,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartApplications=no
-CloseApplicationsFilter={#MainExeName},{#BridgeExeName}
+CloseApplicationsFilter={#MainExeName},{#BridgeExeName},{#RuntimeHostExeName}
 UninstallDisplayName={#AppName}
 
 [Languages]
@@ -59,11 +60,13 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 [InstallDelete]
 Type: files; Name: "{app}\{#MainExeName}"
 Type: files; Name: "{app}\{#BridgeExeName}"
+Type: files; Name: "{app}\{#RuntimeHostExeName}"
 Type: files; Name: "{app}\CodeIsland-Windows.pdb"
 Type: files; Name: "{app}\CodeIsland.Bridge.pdb"
 Type: files; Name: "{app}\CodeIsland.Core.pdb"
 Type: files; Name: "{app}\*.dll"
 Type: filesandordirs; Name: "{app}\Assets"
+Type: filesandordirs; Name: "{app}\runtime"
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式(&D)"; GroupDescription: "附加快捷方式："; Flags: unchecked
@@ -104,6 +107,8 @@ begin
   Result := CloseProcess('{#MainExeName}', ErrorMessage);
   if Result then
     Result := CloseProcess('{#BridgeExeName}', ErrorMessage);
+  if Result then
+    Result := CloseProcess('{#RuntimeHostExeName}', ErrorMessage);
 end;
 
 function GetInstalledUninstaller(var Uninstaller: String): Boolean;

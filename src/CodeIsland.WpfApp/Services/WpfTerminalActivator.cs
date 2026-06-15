@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using CodeIsland.Core.Models;
+using CodeIsland.WpfApp.Models;
 
 namespace CodeIsland.WpfApp.Services;
 

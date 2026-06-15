@@ -61,6 +61,22 @@ $publishScript = Join-Path $projectRoot "scripts\publish-single-file.ps1"
 $installerScript = Join-Path $projectRoot "installer\CodeIsland-Windows.iss"
 $setupIconFile = Join-Path $projectRoot "src\CodeIsland.WpfApp\Assets\app.ico"
 
+function Write-RuntimeManifest {
+    param(
+        [string]$RuntimeDir,
+        [string]$RuntimeVersion
+    )
+
+    $manifest = [ordered]@{
+        runtimeVersion = $RuntimeVersion
+        contractVersion = "1"
+        hostExe = "CodeIsland.RuntimeHost.exe"
+        bridgeExe = "CodeIsland.Bridge.exe"
+        defaultPort = 32145
+    }
+    $manifest | ConvertTo-Json | Set-Content -Path (Join-Path $RuntimeDir "runtime-manifest.json") -Encoding UTF8
+}
+
 if (-not (Test-Path -LiteralPath $installerScript)) {
     throw "Installer script not found: $installerScript"
 }
@@ -109,8 +125,10 @@ try {
 
     Write-Host "Copying full publish outputs to installer staging directory..." -ForegroundColor Cyan
     Copy-Item -Path (Join-Path $appPublish "*") -Destination $stagingDir -Recurse -Force
-    Copy-Item -Path (Join-Path $bridgePublish "*") -Destination $stagingDir -Recurse -Force
-    Copy-Item -Path (Join-Path $runtimeHostPublish "*") -Destination $stagingDir -Recurse -Force
+    $runtimeCurrentDir = Join-Path $stagingDir "runtime\current"
+    New-Item -ItemType Directory -Path $runtimeCurrentDir | Out-Null
+    Copy-Item -Path (Join-Path $bridgePublish "*") -Destination $runtimeCurrentDir -Recurse -Force
+    Copy-Item -Path (Join-Path $runtimeHostPublish "*") -Destination $runtimeCurrentDir -Recurse -Force
 
     if (-not (Test-Path $outputPath)) {
         New-Item -ItemType Directory -Path $outputPath | Out-Null
@@ -120,6 +138,7 @@ try {
     $version = $versionInfo.ProductVersion
     if (-not $version) { $version = $versionInfo.FileVersion }
     if (-not $version) { $version = "0.0.0" }
+    Write-RuntimeManifest -RuntimeDir $runtimeCurrentDir -RuntimeVersion $version
 
     $setupBaseName = "CodeIsland-Windows-Setup-v$version"
     Write-Host "Creating $setupBaseName.exe..." -ForegroundColor Cyan

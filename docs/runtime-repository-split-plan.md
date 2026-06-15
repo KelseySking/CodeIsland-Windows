@@ -7,9 +7,11 @@ each step.
 
 ## Decision Summary
 
-ADR-lite decision: create a new `CodeIsland.Runtime` repository for the
+ADR-lite decision: create a new `CodeIsland-Runtime` repository for the
 Runtime base, and keep this repository as the Windows display client repository
 after the split.
+
+Remote: `https://github.com/KelseySking/CodeIsland-Runtime.git`.
 
 Initial integration should use a local source checkout or Git worktree plus
 project references while the API contract is still moving quickly. After the
@@ -26,7 +28,9 @@ level dependency that this split is trying to remove.
 
 ## Repository Boundaries
 
-### `CodeIsland.Runtime`
+### `CodeIsland-Runtime`
+
+The Runtime repository owns the centralized Runtime control plane. It is responsible for ingesting CLI/source events from the host device, later expanding to remote-device source adapters, and broadcasting one consistent state model to every authorized display client.
 
 The Runtime repository owns all CLI-facing and display-contract behavior:
 
@@ -44,9 +48,12 @@ The Runtime repository owns all CLI-facing and display-contract behavior:
   `external-display-client.md`, and display-client samples.
 - Publish and packaging pieces required to produce RuntimeHost and Bridge
   artifacts.
+- Multi-client REST/WebSocket fan-out, host binding configuration, and the
+  security surface needed for explicit remote/mobile access.
 
 Runtime must remain local-only by default. Binding to LAN addresses, pairing,
-or browser CORS support requires a separate security task.
+token rotation UX, browser CORS support, or remote-device source ingestion
+requires explicit configuration and follow-up security tasks.
 
 ### Windows HUD Repository
 
@@ -59,10 +66,47 @@ The Windows HUD repository owns presentation and Windows desktop behavior:
 - HUD tests and manual verification scripts when a WPF test project exists.
 - HUD packaging that consumes Runtime artifacts instead of compiling Runtime
   internals after the transition.
+- Local Runtime lifecycle management for the official Windows display: start
+  managed local Runtime when needed, leave shared remote Runtime running, update
+  bundled Runtime artifacts, and record diagnostics.
 
-The HUD may start an embedded Runtime during the transition, but HUD state and
+The HUD may start a Runtime process during the transition, but HUD state and
 actions must cross the Runtime REST/WebSocket boundary. New display behavior
 must not read Hub/Core internals directly.
+
+## Multi-Client Runtime Topology
+
+Runtime is a center node, not a UI plugin host:
+
+```text
+CLI sources / future remote-device source adapters
+  -> CodeIsland.Runtime
+  -> REST snapshots + WebSocket fan-out
+  -> Windows HUD / web / mobile / hardware / third-party displays
+```
+
+The same Runtime instance may have several simultaneous display clients. All
+clients use the same token-authenticated REST/WebSocket contract and submit
+permission/question actions by `actionId`. Runtime remains responsible for
+single-response hook semantics so two clients cannot produce divergent CLI
+responses.
+
+Default mode stays private and local:
+
+```text
+runtime_launch_mode = managed
+api_bind_host = 127.0.0.1
+```
+
+Remote/mobile mode is explicit:
+
+```text
+api_bind_host = 0.0.0.0
+```
+
+In remote mode, a Windows display may start Runtime for convenience, but it
+must not shut Runtime down on display exit because phones or other display
+clients may still be connected.
 
 ## Current Dependency Map
 

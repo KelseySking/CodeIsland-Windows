@@ -2,7 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using CodeIsland.Core.Models;
+using CodeIsland.WpfApp.Models;
 using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
 using Control = System.Windows.Controls.Control;
