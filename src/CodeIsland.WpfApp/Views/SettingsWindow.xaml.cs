@@ -383,12 +383,54 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         if (sender is not System.Windows.Controls.Button button || button.Tag is not string source)
             return;
 
-        var installed = _sourceService.GetSourceStatus(source).Installed;
-        var result = installed ? _sourceService.Uninstall(source) : _sourceService.Install(source);
-        FeedbackText = result.Success
-            ? $"{GetSourceDisplayName(source)} 已{(installed ? "断开" : "连接")}"
-            : $"{GetSourceDisplayName(source)} 连接失败";
+        var displayName = GetSourceDisplayName(source);
+        if (!TryGetSourceInstalled(source, out var installed))
+        {
+            FeedbackText = $"{displayName} 状态读取失败：Runtime 未连接或启动中";
+            RefreshHookButtons();
+            return;
+        }
+
+        try
+        {
+            var result = installed ? _sourceService.Uninstall(source) : _sourceService.Install(source);
+            FeedbackText = result.Success
+                ? $"{displayName} 已{(installed ? "断开" : "连接")}"
+                : BuildHookFailureText(displayName, installed, result.Message);
+        }
+        catch
+        {
+            FeedbackText = $"{displayName} {(installed ? "断开" : "连接")}失败：Runtime 未连接或启动中";
+        }
+
         RefreshHookButtons();
+    }
+
+    private bool TryGetSourceInstalled(string source, out bool installed)
+    {
+        try
+        {
+            var status = _sourceService.GetSourceStatus(source);
+            installed = status.Installed;
+            return status.Supported;
+        }
+        catch
+        {
+            installed = false;
+            return false;
+        }
+    }
+
+    private static string BuildHookFailureText(string displayName, bool wasInstalled, string? message)
+    {
+        var operationText = wasInstalled ? "断开" : "连接";
+        if (!string.IsNullOrWhiteSpace(message) &&
+            message.Contains("Runtime", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{displayName} {operationText}失败：Runtime 未连接或启动中";
+        }
+
+        return $"{displayName} {operationText}失败";
     }
 
     private void RefreshHookButtons()
@@ -401,7 +443,14 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
     private void UpdateHookButton(System.Windows.Controls.Button button, string source)
     {
-        var installed = _sourceService.GetSourceStatus(source).Installed;
+        if (!TryGetSourceInstalled(source, out var installed))
+        {
+            button.Content = "连接";
+            button.Background = System.Windows.Media.Brushes.DarkGray;
+            button.Foreground = System.Windows.Media.Brushes.White;
+            return;
+        }
+
         button.Content = installed ? "断开" : "连接";
         button.Background = installed
             ? System.Windows.Media.Brushes.IndianRed

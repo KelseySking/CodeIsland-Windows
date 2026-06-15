@@ -13,6 +13,7 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(2);
+    private const string RuntimeUnavailableMessage = "Runtime is not connected";
     private readonly HttpClient _http;
     private readonly string _baseUrl;
     private readonly string _token;
@@ -155,12 +156,13 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
         RunSourceOperation(source, "repair");
 
     public bool RepairAll() =>
-        RunSync(async () =>
+        RunRuntimeSync("repair-all", "sources/repair-all", false, async () =>
         {
             using var response = await _http.PostAsync("sources/repair-all", content: null, CancellationToken.None).ConfigureAwait(false);
+            LogFailedStatus(response, "sources/repair-all", "repair-all-failed");
             if (!response.IsSuccessStatusCode)
                 return false;
-            var result = await response.Content.ReadFromJsonAsync<SuccessResponse>(JsonOptions).ConfigureAwait(false);
+            var result = await ReadResponseJsonAsync<SuccessResponse>(response, "sources/repair-all", CancellationToken.None).ConfigureAwait(false);
             await RefreshSourcesAsync(CancellationToken.None).ConfigureAwait(false);
             return result?.Success == true;
         });
@@ -170,12 +172,13 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
         new RuntimeAssetsDto("", "", "", Installed: false);
 
     public bool RepairRuntimeAssets() =>
-        RunSync(async () =>
+        RunRuntimeSync("repair-runtime-assets", "runtime-assets/repair", false, async () =>
         {
             using var response = await _http.PostAsync("runtime-assets/repair", content: null, CancellationToken.None).ConfigureAwait(false);
+            LogFailedStatus(response, "runtime-assets/repair", "repair-runtime-assets-failed");
             if (!response.IsSuccessStatusCode)
                 return false;
-            var result = await response.Content.ReadFromJsonAsync<RuntimeAssetsRepairResponse>(JsonOptions).ConfigureAwait(false);
+            var result = await ReadResponseJsonAsync<RuntimeAssetsRepairResponse>(response, "runtime-assets/repair", CancellationToken.None).ConfigureAwait(false);
             await RefreshSourcesAsync(CancellationToken.None).ConfigureAwait(false);
             return result?.Success == true;
         });
@@ -192,15 +195,25 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
 
     private SourceOperationResultDto RunSourceOperation(string source, string operation)
     {
-        var result = RunSyncNullable(async () =>
+        var path = $"sources/{Escape(source)}/{operation}";
+        var result = RunRuntimeSync<SourceOperationResultDto?>(
+            $"source-{operation}",
+            path,
+            fallback: null,
+            async () =>
         {
-            using var response = await _http.PostAsync($"sources/{Escape(source)}/{operation}", content: null, CancellationToken.None).ConfigureAwait(false);
-            var dto = await response.Content.ReadFromJsonAsync<SourceOperationResultDto>(JsonOptions).ConfigureAwait(false);
+            using var response = await _http.PostAsync(path, content: null, CancellationToken.None).ConfigureAwait(false);
+            LogFailedStatus(response, path, "source-operation-failed", new Dictionary<string, string?>
+            {
+                ["source"] = source,
+                ["operation"] = operation
+            });
+            var dto = await ReadResponseJsonAsync<SourceOperationResultDto>(response, path, CancellationToken.None).ConfigureAwait(false);
             await RefreshSourcesAsync(CancellationToken.None).ConfigureAwait(false);
             return dto;
         });
 
-        return result ?? new SourceOperationResultDto(source, Success: false, Installed: false, Message: $"{source} operation failed");
+        return result ?? SourceOperationFailed(source, RuntimeUnavailableMessage);
     }
 
     private async Task RefreshSourcesAsync(CancellationToken ct)
@@ -370,6 +383,61 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
             });
             return default;
         }
+    }
+
+    private async Task<T?> ReadResponseJsonAsync<T>(HttpResponseMessage response, string path, CancellationToken ct)
+    {
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger?.Write("WpfRuntimeApiClient", "read-json-failed", new Dictionary<string, string?>
+            {
+                ["path"] = path,
+                ["status"] = ((int)response.StatusCode).ToString(),
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
+            return default;
+        }
+    }
+
+    private T RunRuntimeSync<T>(string operation, string path, T fallback, Func<Task<T>> action)
+    {
+        try
+        {
+            return RunSync(action);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Write("WpfRuntimeApiClient", "runtime-operation-exception", new Dictionary<string, string?>
+            {
+                ["operation"] = operation,
+                ["path"] = path,
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
+            return fallback;
+        }
+    }
+
+    private void LogFailedStatus(
+        HttpResponseMessage response,
+        string path,
+        string eventName,
+        Dictionary<string, string?>? extra = null)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+
+        var fields = extra == null
+            ? new Dictionary<string, string?>()
+            : new Dictionary<string, string?>(extra, StringComparer.Ordinal);
+        fields["path"] = path;
+        fields["status"] = ((int)response.StatusCode).ToString();
+        _logger?.Write("WpfRuntimeApiClient", eventName, fields);
     }
 
     private async Task<bool> PostForSuccessAsync(string path, CancellationToken ct)
@@ -634,6 +702,9 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
 
     private static string Escape(string value) =>
         Uri.EscapeDataString(value);
+
+    private static SourceOperationResultDto SourceOperationFailed(string source, string message) =>
+        new(source, Success: false, Installed: false, Message: message);
 
     private sealed record SuccessResponse(bool Success);
 
