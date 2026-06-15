@@ -4,6 +4,7 @@
     <Project Path="src/CodeIsland.Contracts/CodeIsland.Contracts.csproj" />
     <Project Path="src/CodeIsland.Core/CodeIsland.Core.csproj" />
     <Project Path="src/CodeIsland.Hub/CodeIsland.Hub.csproj" />
+    <Project Path="src/CodeIsland.RuntimeHost/CodeIsland.RuntimeHost.csproj" />
     <Project Path="src/CodeIsland.WpfApp/CodeIsland.WpfApp.csproj" />
   </Folder>
   <Folder Name="/tests/">

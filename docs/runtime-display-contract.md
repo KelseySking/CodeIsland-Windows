@@ -8,6 +8,7 @@ Developer entry points:
 
 * `docs/external-display-client.md` explains how to connect a display client, subscribe to events, and send pending-action operations.
 * `samples/external-display-console/` is a no-dependency .NET console sample that uses the public REST/WebSocket contract.
+* `docs/runtime-repository-split-plan.md` defines the repository split plan for moving Runtime/Hub into an independent Runtime repository.
 
 ## Ownership Boundary
 
@@ -183,3 +184,4 @@ Recommended migration order:
 5. Add an independent Runtime host process.
 6. Convert WPF HUD into an API/WebSocket client.
 7. Publish display-client docs and minimal sample.
+8. Extract Runtime-owned projects into an independent repository per `docs/runtime-repository-split-plan.md`.

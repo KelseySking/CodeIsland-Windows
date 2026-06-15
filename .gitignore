@@ -92,6 +92,7 @@ coverage*/
 /docs/*
 !/docs/runtime-display-contract.md
 !/docs/external-display-client.md
+!/docs/runtime-repository-split-plan.md
 /AGENTS.md
 /CLAUDE.md
 

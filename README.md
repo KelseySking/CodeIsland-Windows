@@ -65,6 +65,7 @@ CodeIsland.Windows/
 │   │   ├── SourceResolver.cs     # AI tool source identification
 │   │   └── EnvironmentCollector.cs
 │   ├── CodeIsland.Hub/           # Local Hub: CLI operations, source management, HTTP/WebSocket API
+│   ├── CodeIsland.RuntimeHost/   # Standalone Runtime process for display clients
 │   └── CodeIsland.WpfApp/        # WPF main application
 │       ├── ViewModels/           # WpfAppState and HUD view models
 │       ├── Views/                # HUD, session list, approvals, Q&A, details, settings, about
@@ -78,7 +79,7 @@ CodeIsland.Windows/
 └── docs/                         # Technical specs, changelog, hardware/rendering notes
 ```
 
-The dependency direction is layered around Bridge/Hub/Core: `CodeIsland.Bridge → CodeIsland.Core`, `CodeIsland.Hub → CodeIsland.Contracts + CodeIsland.Core`, and `CodeIsland.WpfApp → CodeIsland.Hub + CodeIsland.Core`. Bridge remains the short-lived Hook adapter; WPF displays and operates state through Hub-facing interfaces/API.
+The dependency direction is layered around Bridge/Hub/Core: `CodeIsland.Bridge → CodeIsland.Core`, `CodeIsland.Hub → CodeIsland.Contracts + CodeIsland.Core`, `CodeIsland.RuntimeHost → CodeIsland.Hub + CodeIsland.Core`, and `CodeIsland.WpfApp → CodeIsland.Hub + CodeIsland.Core`. Bridge remains the short-lived Hook adapter; WPF displays and operates state through Hub-facing interfaces/API. The planned independent Runtime repository split is documented in `docs/runtime-repository-split-plan.md`.
 
 ## Quick Start
 
@@ -180,6 +181,7 @@ AI tool triggers a Hook event (currently Claude Code and Codex)
 The WPF HUD is the default client. Web, plugin, and other local frontends can use the same localhost API. The first phase is local-only; LAN/mobile/watch pairing is not implemented yet.
 
 For external display development, see `docs/external-display-client.md`. A no-dependency console sample is available at `samples/external-display-console`.
+The Runtime/HUD repository split plan is in `docs/runtime-repository-split-plan.md`.
 
 Authentication supports:
 
