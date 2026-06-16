@@ -8,7 +8,7 @@
 
 [中文版本](README_CN.md)
 
-CodeIsland is an **AI coding agent status panel**. This project is a Windows adaptation inspired by the popular macOS open-source project, [CodeIsland](https://github.com/wxtsky/CodeIsland). The macOS version anchors to the MacBook notch area, while the Windows version is presented as a desktop HUD floating window. The current Windows version supports Claude Code and Codex. It listens to real-time events through the Hook mechanism and shows session status, permission approvals, Q&A interactions, and recent task details at the top of the screen.
+CodeIsland is an **AI coding agent status panel** for Windows. Inspired by the macOS open-source project [CodeIsland](https://github.com/wxtsky/CodeIsland), the Windows version is presented as a desktop HUD floating window. It supports Claude Code and Codex, listens to real-time events through the Hook mechanism, and shows session status, permission approvals, Q&A interactions, and recent task details at the top of the screen.
 
 Project repository: https://github.com/KelseySking/CodeIsland-Windows
 
@@ -24,7 +24,7 @@ Project repository: https://github.com/KelseySking/CodeIsland-Windows
 
 ## Features
 
-- **Real-time agent monitoring** — Claude Code and Codex are supported end-to-end; Gemini CLI, Cursor, GitHub Copilot, Cline, and other tools are planned for future integration
+- **Real-time agent monitoring** — Claude Code and Codex supported end-to-end; other AI tools planned for future integration
 - **Desktop HUD floating window** — Floating display at the top, side, or bottom of the screen, with automatic collapsed/expanded switching and no focus stealing
 - **Session list and details** — View running status, current tool, recent messages, completion summaries, and task details in real time
 - **Permission approvals** — Approve or deny tool permission requests directly from the panel, with global hotkey support
@@ -34,52 +34,45 @@ Project repository: https://github.com/KelseySking/CodeIsland-Windows
 - **Webhook forwarding** — Asynchronously deliver key notifications to a custom HTTP(S) endpoint
 - **8-bit sound effects** — Pixel-style sound effects for session start, completion, approval, and other events
 - **Global hotkeys** — Default hotkeys: `Ctrl+Alt+I` to toggle the panel, `Ctrl+Alt+Y` to approve, and `Ctrl+Alt+N` to deny
-- **Automatic updates** — Check for new versions through this project's GitHub Releases
+- **Automatic updates** — Check for new versions through GitHub Releases
 
 ## Tech Stack
 
 | Component | Choice |
 |------|------|
-| Language/runtime | C# / .NET 8 (`net8.0` / `net8.0-windows`) |
+| Language/runtime | C# / .NET 8 |
 | UI framework | WPF + WPF-UI |
-| IPC | Named Pipes, 4-byte little-endian length prefix + UTF-8 JSON |
-| Local API | ASP.NET Core Minimal API + WebSocket, bound to `127.0.0.1` by default |
-| Process query | WMI / `System.Management` |
 | Sound effects | NAudio |
 | Hotkeys | `RegisterHotKey` P/Invoke |
-| Testing | xUnit |
 
-## Project Structure
+## Architecture
+
+CodeIsland for Windows is a pure **display client** (HUD). It connects to a bundled [CodeOrbit Runtime](https://github.com/wxtsky/CodeOrbit) via REST and WebSocket APIs. The Runtime handles Hook event reception, state aggregation, and session management; the WPF app only handles UI rendering and user interaction.
 
 ```text
-CodeIsland.Windows/
-├── src/
-│   ├── CodeIsland.Contracts/     # Local API / Hub DTO contracts
-│   ├── CodeIsland.Core/          # Platform-independent core library
-│   │   ├── Models/               # HookEvent, SessionSnapshot, AgentStatus, SupportedSource
-│   │   ├── Services/             # EventNormalizer, ConfigInstaller, L10n, SettingsManager
-│   │   └── IPC/                  # Named Pipe paths and message protocol
-│   ├── CodeIsland.Bridge/        # Short-lived Hook Bridge: stdin JSON → Named Pipe
-│   │   ├── Program.cs
-│   │   ├── ProcessAncestry.cs    # WMI process ancestry parsing
-│   │   ├── SourceResolver.cs     # AI tool source identification
-│   │   └── EnvironmentCollector.cs
-│   ├── CodeIsland.Hub/           # Local Hub: CLI operations, source management, HTTP/WebSocket API
-│   ├── CodeIsland.RuntimeHost/   # Standalone Runtime process for display clients
-│   └── CodeIsland.WpfApp/        # WPF main application
-│       ├── ViewModels/           # WpfAppState and HUD view models
-│       ├── Views/                # HUD, session list, approvals, Q&A, details, settings, about
-│       ├── Services/             # RuntimeApiClient, RuntimeProcessManager, TerminalActivator, GlobalHotkey, UpdateChecker
-│       └── Assets/               # Icons and sound effects
-├── tests/
-│   ├── CodeIsland.Core.Tests/
-│   ├── CodeIsland.Bridge.Tests/
-│   └── CodeIsland.Hub.Tests/
-├── scripts/                      # Build, publish, and packaging scripts
-└── docs/                         # Technical specs, changelog, hardware/rendering notes
+┌──────────────────────┐         ┌─────────────────────────┐
+│ CodeOrbit Runtime    │◄────────│ CodeIsland-Windows      │
+│ (bundled, auto-start)│  REST   │ (Pure Display Client)   │
+│                      │  +WS    │                         │
+│ Hook events → State  │         │ UI: HUD, approvals,     │
+│ aggregation → API    │         │ Q&A, session details    │
+└──────────────────────┘         └─────────────────────────┘
 ```
 
-The Runtime layer is being split into the independent `CodeIsland-Runtime` repository. Its internal dependency direction is `CodeIsland.Bridge -> CodeIsland.Core`, `CodeIsland.Hub -> CodeIsland.Contracts + CodeIsland.Core`, and `CodeIsland.RuntimeHost -> CodeIsland.Hub + CodeIsland.Core`. The Windows HUD is now a display client: `CodeIsland.WpfApp -> CodeIsland.Contracts`, plus RuntimeHost/Bridge executable artifacts at package time. The split plan is documented in `docs/runtime-repository-split-plan.md`.
+### Project Structure
+
+```text
+src/
+├── CodeIsland.Contracts/     # API DTO contracts (aligned with CodeOrbit Runtime)
+└── CodeIsland.WpfApp/        # WPF display client
+    ├── ViewModels/           # App state and HUD view models
+    ├── Views/                # HUD, session list, approvals, Q&A, details, settings
+    ├── Services/             # Runtime API client, process manager, terminal, hotkeys, updates
+    └── Assets/               # Icons and sound effects
+scripts/                      # Build, publish, and packaging scripts
+samples/
+└── external-display-console/ # Example: connecting to Runtime API
+```
 
 ## Quick Start
 
@@ -90,151 +83,53 @@ The Runtime layer is being split into the independent `CodeIsland-Runtime` repos
 
 ### Build
 
-This repository uses `CodeIsland.slnx`. Running `dotnet build` at the repository root builds all projects in the solution.
-
 ```powershell
 dotnet build
 dotnet build -c Release
 ```
 
-You can also run the full build script:
-
-```powershell
-.\scripts\build.ps1
-```
-
-### Start the app in development
-
-Start the WPF main application from the repository root:
+### Run
 
 ```powershell
 dotnet run --project src/CodeIsland.WpfApp
-
 ```
 
-After startup, the HUD floating window is shown and a CodeIsland icon is created in the system tray. In managed mode, the HUD starts `CodeIsland.RuntimeHost` on `http://127.0.0.1:32145` and connects to it through REST/WebSocket. Hook events are forwarded to Runtime by `CodeIsland.Bridge` as a short-lived child process. You do not need to keep Bridge running manually.
-The API token is stored as `api_token` in `%APPDATA%\CodeIsland\settings.json`.
+After startup, the HUD floating window is shown and a CodeIsland icon appears in the system tray. In managed mode, the app automatically starts the bundled `CodeOrbit.RuntimeHost.exe` and connects to `http://127.0.0.1:32145` via REST/WebSocket.
 
-### Run tests
-
-```powershell
-# Run all tests
-dotnet test
-
-# Run a single test project
-dotnet test tests/CodeIsland.Core.Tests
-dotnet test tests/CodeIsland.Bridge.Tests
-
-# Run tests matching a name
-dotnet test tests/CodeIsland.Core.Tests --filter FullyQualifiedName~EventNormalizer
-```
-
-### Publish single-file build
+### Publish & Package
 
 ```powershell
+# Single-file self-contained build
 .\scripts\publish-single-file.ps1
-```
 
-### Package release ZIP
-
-```powershell
+# Release ZIP
 .\scripts\create-release-zip.ps1
-```
 
-### Package Windows installer
-
-Install Inno Setup 6 first and ensure `ISCC.exe` is available in PATH, or specify its path with `-InnoSetupCompiler`.
-
-```powershell
+# Windows installer (requires Inno Setup 6)
 .\scripts\create-installer.ps1
 ```
 
-### Start the app from a release package
-
-After extracting the release ZIP, run:
-
-```powershell
-.\CodeIsland-Windows.exe
-```
-
-After the first startup, you can install the Hook for Claude Code and Codex from the Hooks tab in the settings UI. Other AI tool integrations are not yet open.
-
-## How It Works
-
-```text
-AI tool triggers a Hook event (currently Claude Code and Codex)
-  → codeisland-bridge.exe (started once per Hook invocation)
-    → Read JSON from stdin
-    → Collect Windows environment variables
-    → Query process ancestry through WMI to identify the source CLI and tracked process
-    → Send enriched JSON to CodeIsland.RuntimeHost through Named Pipe
-      → Runtime HookServer receives and routes by event type
-        → Permission request / Q&A request → Runtime waits for a REST action and returns the Hook response
-        → Lifecycle event → SessionSnapshot.ReduceEvent() computes the new state
-          → Runtime publishes REST snapshots and WebSocket events
-            → WPF AppState projects Runtime state and renders the HUD
-```
-
-`PermissionRequest`, `PreToolUse` events that explicitly require approval, and `Notification`/`Question*` events with question payloads are treated as blocking events and wait for user responses. Normal events first return a `{}` ack and then update the UI asynchronously, avoiding event loss or pipe noise caused by the short-lived Bridge disconnecting too early.
-
-## Runtime API
-
-The WPF HUD is the default client. Web, plugin, mobile, hardware, and other frontends can use the same token-authenticated Runtime API. Runtime binds to `127.0.0.1` by default. Remote access is explicit through `api_bind_host=0.0.0.0`; pairing, CORS, and stronger remote-security UX are follow-up work.
-
-For external display development, see `docs/external-display-client.md`. A no-dependency console sample is available at `samples/external-display-console`.
-The Runtime/HUD repository split plan is in `docs/runtime-repository-split-plan.md`.
-
-Authentication supports:
-
-- `Authorization: Bearer <api_token>`
-- `X-CodeIsland-Token: <api_token>`
-- WebSocket clients can use `ws://127.0.0.1:32145/api/events?token=<api_token>`
-
-Current API surface:
-
-- `GET /api/health`
-- `GET /api/version`
-- `GET /api/capabilities`
-- `GET /api/sources`
-- `POST /api/sources/{source}/install`
-- `POST /api/sources/{source}/uninstall`
-- `POST /api/sources/{source}/repair`
-- `GET /api/runtime-assets`
-- `POST /api/runtime-assets/repair`
-- `GET /api/sessions`
-- `GET /api/sessions/{sessionId}`
-- `GET /api/sessions/{sessionId}/messages`
-- `GET /api/pending`
-- `POST /api/permissions/{actionId}/allow`
-- `POST /api/permissions/{actionId}/deny`
-- `POST /api/questions/{actionId}/answer`
-- `POST /api/questions/{actionId}/answer-current`
-- `POST /api/questions/{actionId}/dismiss`
-- `WS /api/events`
-
 ## Hook Installation
 
-The user-visible Hook installation entry currently supports Claude Code and Codex:
+Install or uninstall the Claude Code and Codex Hooks with one click from the Hooks tab in the settings UI.
 
-| Format | Tool | Verified Version | Status |
-|------|------|------|------|
-| `.claude` | Claude Code | `v2.1.145` | Supported |
-| `.codex` | Codex | `v0.137.0` | Supported |
+| Tool | Status |
+|------|------|
+| Claude Code | Supported |
+| Codex | Supported |
 
-Gemini CLI, Cursor, GitHub Copilot, Cline, and other tools are planned for future integration. Reserved underlying formats do not mean they are available in the current version.
-
-You can install or uninstall the Claude Code and Codex Hooks with one click from the Hooks tab in the settings UI. The installer only adds or removes CodeIsland-owned hook entries and preserves existing user hooks, `env`, `permissions`, and other configuration.
+Other AI tools (Gemini CLI, Cursor, GitHub Copilot, Cline, etc.) are planned for future integration.
 
 ## Configuration
 
-The settings file is located at `%APPDATA%\CodeIsland\settings.json` and can be edited through the settings UI or directly.
+Settings are stored at `%APPDATA%\CodeIsland\settings.json` and can be edited through the settings UI.
 
 | Category | Setting | Default |
 |------|--------|--------|
 | General | Start on boot | `false` |
 | General | Display position | `top-center` |
-| Behavior | Automatically approve safe tools | `true` |
-| Behavior | Webhook URL | Empty string |
+| Behavior | Auto-approve safe tools | `true` |
+| Behavior | Webhook URL | Empty |
 | Behavior | Session timeout (seconds) | `300` |
 | Behavior | Smart suppression | `true` |
 | Behavior | Hide in fullscreen | `true` |
@@ -246,29 +141,10 @@ The settings file is located at `%APPDATA%\CodeIsland\settings.json` and can be 
 | Hotkeys | Approve | `Ctrl+Alt+Y` |
 | Hotkeys | Deny | `Ctrl+Alt+N` |
 
-## Development Notes
-
-- After modifying UI/WPF-related code, run at least `dotnet build` to verify XAML, bindings, and project references.
-- When changes involve HUD behavior, approval/Q&A interaction, or window sizing and positioning, manually verify with `dotnet run --project src/CodeIsland.WpfApp`.
-- Hook commands should call `codeisland-bridge.exe` directly. Do not wrap stdin forwarding with PowerShell `$input | & ...`.
-- Bridge is published as trimmed/single-file, so enriched payload serialization must remain trim-safe.
-
-## Distribution
-
-| Channel | Priority |
-|------|--------|
-| GitHub Releases ZIP | P0 (MVP) |
-| WinGet | P1 |
-| Scoop | P2 |
-
 ## Acknowledgements
 
-This project was heavily inspired by the excellent open-source project on macOS. Special thanks to:
-
-- **[CodeIsland (macOS)](https://github.com/wxtsky/CodeIsland)** — Gratitude to the original author [@wxtsky](https://github.com/wxtsky) for the brilliant concept and inspiration. This Windows port extends the core philosophy of "monitoring AI agents in real-time without switching windows," specifically tailored for the Windows desktop environment (HUD overlay, Windows Terminal integration, etc.).
+This project was inspired by [CodeIsland (macOS)](https://github.com/wxtsky/CodeIsland) by [@wxtsky](https://github.com/wxtsky). The Windows version extends the core philosophy of "monitoring AI agents in real-time without switching windows" for the Windows desktop environment.
 
 ## License
 
 MIT License
-
-<center>This project has been shared on the [LINUX DO](https://linux.do).</center>
