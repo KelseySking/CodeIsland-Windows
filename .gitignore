@@ -96,3 +96,10 @@ coverage*/
 /AGENTS.md
 /CLAUDE.md
 
+
+# 保留 external/CodeOrbit-Runtime 的二进制文件，但排除 pdb
+!external/CodeOrbit-Runtime/*.exe
+!external/CodeOrbit-Runtime/*.dll
+!external/CodeOrbit-Runtime/*.json
+!external/CodeOrbit-Runtime/bundled-plugins/
+external/CodeOrbit-Runtime/*.pdb
