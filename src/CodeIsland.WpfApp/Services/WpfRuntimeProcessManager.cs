@@ -132,16 +132,22 @@ public sealed class WpfRuntimeProcessManager : IDisposable
     private static IEnumerable<string> EnumerateRuntimeHostCandidates()
     {
         var baseDir = AppContext.BaseDirectory;
+        yield return Path.Combine(WpfRuntimeUpdateManager.CurrentRuntimeDirectory, "CodeOrbit.RuntimeHost.exe");
+        yield return Path.Combine(baseDir, "runtime", "current", "CodeOrbit.RuntimeHost.exe");
+        yield return Path.Combine(baseDir, "runtime", "CodeOrbit.RuntimeHost.exe");
+        yield return Path.Combine(baseDir, "CodeOrbit.RuntimeHost.exe");
+
+        // Legacy paths for backward compatibility during migration
         yield return Path.Combine(WpfRuntimeUpdateManager.CurrentRuntimeDirectory, "CodeIsland.RuntimeHost.exe");
         yield return Path.Combine(baseDir, "runtime", "current", "CodeIsland.RuntimeHost.exe");
         yield return Path.Combine(baseDir, "runtime", "CodeIsland.RuntimeHost.exe");
-        yield return Path.Combine(baseDir, "CodeIsland.RuntimeHost.exe");
 
+        // Development paths for CodeOrbit repo
         var current = new DirectoryInfo(baseDir);
         while (current != null)
         {
-            yield return Path.Combine(current.FullName, "src", "CodeIsland.RuntimeHost", "bin", "Debug", "net8.0", "CodeIsland.RuntimeHost.exe");
-            yield return Path.Combine(current.FullName, "src", "CodeIsland.RuntimeHost", "bin", "Release", "net8.0", "CodeIsland.RuntimeHost.exe");
+            yield return Path.Combine(current.FullName, "..", "CodeOrbit", "src", "CodeOrbit.RuntimeHost", "bin", "Debug", "net8.0", "CodeOrbit.RuntimeHost.exe");
+            yield return Path.Combine(current.FullName, "..", "CodeOrbit", "src", "CodeOrbit.RuntimeHost", "bin", "Release", "net8.0", "CodeOrbit.RuntimeHost.exe");
             current = current.Parent;
         }
     }
