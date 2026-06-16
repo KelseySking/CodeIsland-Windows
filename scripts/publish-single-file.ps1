@@ -1,4 +1,6 @@
 # CodeIsland - 发布单文件可执行程序
+# 注意: 本脚本现在只发布 WpfApp
+# CodeOrbit Runtime (Bridge + RuntimeHost) 需要从独立仓库获取
 param(
     [string]$Runtime = "win-x64"
 )
@@ -22,8 +24,6 @@ function Assert-PublishFiles {
 
 $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $appPublish = Join-Path $projectRoot "src\CodeIsland.WpfApp\bin\Release\net8.0-windows\$Runtime\publish"
-$bridgePublish = Join-Path $projectRoot "src\CodeIsland.Bridge\bin\Release\net8.0\$Runtime\publish"
-$runtimeHostPublish = Join-Path $projectRoot "src\CodeIsland.RuntimeHost\bin\Release\net8.0\$Runtime\publish"
 
 if (Test-Path -LiteralPath $appPublish) {
     Remove-Item $appPublish -Recurse -Force
@@ -46,34 +46,10 @@ Assert-PublishFiles -PublishDir $appPublish -ArtifactName "CodeIsland-Windows" -
     "Assets\sounds\8bit_submit.wav"
 )
 
-if (Test-Path -LiteralPath $bridgePublish) {
-    Remove-Item $bridgePublish -Recurse -Force
-}
+Write-Host ""
+Write-Host "Done. WpfApp output in: $appPublish" -ForegroundColor Green
+Write-Host ""
+Write-Host "Note: CodeOrbit Runtime (Bridge + RuntimeHost) must be obtained separately from:" -ForegroundColor Yellow
+Write-Host "  https://github.com/KelseySking/CodeOrbit" -ForegroundColor Cyan
+Write-Host "  or D:\OtherWork\CodeOrbit\release\CodeOrbit-win-x64-v*.zip" -ForegroundColor Cyan
 
-Write-Host "Publishing CodeIsland.Bridge ($Runtime, single-file)..." -ForegroundColor Cyan
-dotnet publish (Join-Path $projectRoot "src\CodeIsland.Bridge") -c Release -r $Runtime --self-contained -p:PublishSingleFile=true
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Publish CodeIsland.Bridge failed!" -ForegroundColor Red
-    exit $LASTEXITCODE
-}
-
-Assert-PublishFiles -PublishDir $bridgePublish -ArtifactName "CodeIsland.Bridge" -RequiredFiles @(
-    "CodeIsland.Bridge.exe"
-)
-
-if (Test-Path -LiteralPath $runtimeHostPublish) {
-    Remove-Item $runtimeHostPublish -Recurse -Force
-}
-
-Write-Host "Publishing CodeIsland.RuntimeHost ($Runtime, single-file)..." -ForegroundColor Cyan
-dotnet publish (Join-Path $projectRoot "src\CodeIsland.RuntimeHost") -c Release -r $Runtime --self-contained -p:PublishSingleFile=true
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Publish CodeIsland.RuntimeHost failed!" -ForegroundColor Red
-    exit $LASTEXITCODE
-}
-
-Assert-PublishFiles -PublishDir $runtimeHostPublish -ArtifactName "CodeIsland.RuntimeHost" -RequiredFiles @(
-    "CodeIsland.RuntimeHost.exe"
-)
-
-Write-Host "Done. Output in bin/Release/*/publish/" -ForegroundColor Green

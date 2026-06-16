@@ -1,47 +1,31 @@
-# CodeIsland-Windows - package publish artifacts as ZIP
+# CodeIsland-Windows - package publish artifacts as ZIP with CodeOrbit Runtime
 param(
     [string]$Runtime = "win-x64",
-    [string]$OutputDir = "release"
+    [string]$OutputDir = "release",
+    [string]$CodeOrbitRuntimeZip = "D:\OtherWork\CodeOrbit\release\CodeOrbit-win-x64-v1.0.0.zip"
 )
 
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $appPublish = Join-Path $projectRoot "src\CodeIsland.WpfApp\bin\Release\net8.0-windows\$Runtime\publish"
-$bridgePublish = Join-Path $projectRoot "src\CodeIsland.Bridge\bin\Release\net8.0\$Runtime\publish"
-$runtimeHostPublish = Join-Path $projectRoot "src\CodeIsland.RuntimeHost\bin\Release\net8.0\$Runtime\publish"
 
-function Write-RuntimeManifest {
-    param(
-        [string]$RuntimeDir,
-        [string]$RuntimeVersion
-    )
-
-    $manifest = [ordered]@{
-        runtimeVersion = $RuntimeVersion
-        contractVersion = "1"
-        hostExe = "CodeIsland.RuntimeHost.exe"
-        bridgeExe = "CodeIsland.Bridge.exe"
-        defaultPort = 32145
-    }
-    $manifest | ConvertTo-Json | Set-Content -Path (Join-Path $RuntimeDir "runtime-manifest.json") -Encoding UTF8
-}
-
+# Check WpfApp publish
 if (-not (Test-Path $appPublish)) {
     Write-Host "App publish directory not found: $appPublish" -ForegroundColor Red
     Write-Host "Run publish-single-file.ps1 first." -ForegroundColor Yellow
     exit 1
 }
 
-if (-not (Test-Path $bridgePublish)) {
-    Write-Host "Bridge publish directory not found: $bridgePublish" -ForegroundColor Red
-    Write-Host "Run publish-single-file.ps1 first." -ForegroundColor Yellow
-    exit 1
-}
-
-if (-not (Test-Path $runtimeHostPublish)) {
-    Write-Host "Runtime host publish directory not found: $runtimeHostPublish" -ForegroundColor Red
-    Write-Host "Run publish-single-file.ps1 first." -ForegroundColor Yellow
+# Check CodeOrbit Runtime ZIP
+if (-not (Test-Path $CodeOrbitRuntimeZip)) {
+    Write-Host "CodeOrbit Runtime ZIP not found: $CodeOrbitRuntimeZip" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Please obtain CodeOrbit Runtime from:" -ForegroundColor Yellow
+    Write-Host "  https://github.com/KelseySking/CodeOrbit" -ForegroundColor Cyan
+    Write-Host "  or build it from D:\OtherWork\CodeOrbit" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Or specify a custom path with -CodeOrbitRuntimeZip parameter" -ForegroundColor Yellow
     exit 1
 }
 
@@ -51,32 +35,29 @@ if (Test-Path $stagingDir) {
 }
 New-Item -ItemType Directory -Path $stagingDir | Out-Null
 
-Write-Host "Copying full publish outputs to staging directory..." -ForegroundColor Cyan
-
-$appSource = Join-Path $appPublish "CodeIsland-Windows.exe"
-$bridgeSource = Join-Path $bridgePublish "CodeIsland.Bridge.exe"
-$runtimeHostSource = Join-Path $runtimeHostPublish "CodeIsland.RuntimeHost.exe"
-
-if (-not (Test-Path $appSource)) {
-    Write-Host "App executable not found: $appSource" -ForegroundColor Red
-    exit 1
-}
-
-if (-not (Test-Path $bridgeSource)) {
-    Write-Host "Bridge executable not found: $bridgeSource" -ForegroundColor Red
-    exit 1
-}
-
-if (-not (Test-Path $runtimeHostSource)) {
-    Write-Host "Runtime host executable not found: $runtimeHostSource" -ForegroundColor Red
-    exit 1
-}
-
+Write-Host "Copying WpfApp to staging directory..." -ForegroundColor Cyan
 Copy-Item -Path (Join-Path $appPublish "*") -Destination $stagingDir -Recurse -Force
+
+Write-Host "Extracting CodeOrbit Runtime..." -ForegroundColor Cyan
 $runtimeCurrentDir = Join-Path $stagingDir "runtime\current"
-New-Item -ItemType Directory -Path $runtimeCurrentDir | Out-Null
-Copy-Item -Path (Join-Path $bridgePublish "*") -Destination $runtimeCurrentDir -Recurse -Force
-Copy-Item -Path (Join-Path $runtimeHostPublish "*") -Destination $runtimeCurrentDir -Recurse -Force
+New-Item -ItemType Directory -Path $runtimeCurrentDir -Force | Out-Null
+Expand-Archive -Path $CodeOrbitRuntimeZip -DestinationPath $runtimeCurrentDir -Force
+
+# Verify Runtime files
+$requiredRuntimeFiles = @(
+    "CodeOrbit.RuntimeHost.exe",
+    "CodeOrbit.Bridge.exe",
+    "runtime-manifest.json"
+)
+foreach ($file in $requiredRuntimeFiles) {
+    $path = Join-Path $runtimeCurrentDir $file
+    if (-not (Test-Path $path)) {
+        Write-Host "Missing required Runtime file: $file" -ForegroundColor Red
+        Write-Host "The CodeOrbit Runtime ZIP may be incomplete or corrupted." -ForegroundColor Yellow
+        Remove-Item $stagingDir -Recurse -Force
+        exit 1
+    }
+}
 
 $outputPath = Join-Path $projectRoot $OutputDir
 if (-not (Test-Path $outputPath)) {
@@ -88,7 +69,6 @@ $versionInfo = (Get-Item -LiteralPath $stagedAppExe).VersionInfo
 $version = $versionInfo.ProductVersion
 if (-not $version) { $version = $versionInfo.FileVersion }
 if (-not $version) { $version = "0.0.0" }
-Write-RuntimeManifest -RuntimeDir $runtimeCurrentDir -RuntimeVersion $version
 
 $zipName = "CodeIsland-Windows-$Runtime-v$version.zip"
 $zipPath = Join-Path $outputPath $zipName
@@ -101,4 +81,11 @@ Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $zipPath
 
 Remove-Item $stagingDir -Recurse -Force
 
+Write-Host ""
 Write-Host "Release ZIP created: $zipPath" -ForegroundColor Green
+Write-Host ""
+Write-Host "Package contents:" -ForegroundColor Cyan
+Write-Host "  - CodeIsland-Windows.exe (WPF Display Client)" -ForegroundColor Gray
+Write-Host "  - runtime/current/CodeOrbit.RuntimeHost.exe" -ForegroundColor Gray
+Write-Host "  - runtime/current/CodeOrbit.Bridge.exe" -ForegroundColor Gray
+Write-Host "  - runtime/current/runtime-manifest.json" -ForegroundColor Gray
