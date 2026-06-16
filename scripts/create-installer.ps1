@@ -1,4 +1,4 @@
-# CodeIsland-Windows - create Windows installer
+# CodeIsland-Windows - create Windows installer with bundled CodeOrbit Runtime
 param(
     [string]$Runtime = "win-x64",
     [string]$OutputDir = "release",
@@ -60,22 +60,7 @@ $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Pa
 $publishScript = Join-Path $projectRoot "scripts\publish-single-file.ps1"
 $installerScript = Join-Path $projectRoot "installer\CodeIsland-Windows.iss"
 $setupIconFile = Join-Path $projectRoot "src\CodeIsland.WpfApp\Assets\app.ico"
-
-function Write-RuntimeManifest {
-    param(
-        [string]$RuntimeDir,
-        [string]$RuntimeVersion
-    )
-
-    $manifest = [ordered]@{
-        runtimeVersion = $RuntimeVersion
-        contractVersion = "1"
-        hostExe = "CodeIsland.RuntimeHost.exe"
-        bridgeExe = "CodeIsland.Bridge.exe"
-        defaultPort = 32145
-    }
-    $manifest | ConvertTo-Json | Set-Content -Path (Join-Path $RuntimeDir "runtime-manifest.json") -Encoding UTF8
-}
+$bundledRuntimeDir = Join-Path $projectRoot "external\CodeOrbit-Runtime"
 
 if (-not (Test-Path -LiteralPath $installerScript)) {
     throw "Installer script not found: $installerScript"
@@ -83,6 +68,10 @@ if (-not (Test-Path -LiteralPath $installerScript)) {
 
 if (-not (Test-WindowsIcoFile -Path $setupIconFile)) {
     throw "Setup icon file must be a valid Windows ICO file: $setupIconFile"
+}
+
+if (-not (Test-Path $bundledRuntimeDir)) {
+    throw "Bundled CodeOrbit Runtime not found: $bundledRuntimeDir"
 }
 
 $iscc = Resolve-InnoSetupCompiler -ExplicitPath $InnoSetupCompiler
@@ -96,22 +85,23 @@ if (-not $SkipPublish) {
 }
 
 $appPublish = Join-Path $projectRoot "src\CodeIsland.WpfApp\bin\Release\net8.0-windows\$Runtime\publish"
-$bridgePublish = Join-Path $projectRoot "src\CodeIsland.Bridge\bin\Release\net8.0\$Runtime\publish"
-$runtimeHostPublish = Join-Path $projectRoot "src\CodeIsland.RuntimeHost\bin\Release\net8.0\$Runtime\publish"
 $appExe = Join-Path $appPublish "CodeIsland-Windows.exe"
-$bridgeExe = Join-Path $bridgePublish "CodeIsland.Bridge.exe"
-$runtimeHostExe = Join-Path $runtimeHostPublish "CodeIsland.RuntimeHost.exe"
 
 if (-not (Test-Path $appExe)) {
     throw "App executable not found: $appExe"
 }
 
-if (-not (Test-Path $bridgeExe)) {
-    throw "Bridge executable not found: $bridgeExe"
-}
-
-if (-not (Test-Path $runtimeHostExe)) {
-    throw "Runtime host executable not found: $runtimeHostExe"
+# Verify bundled Runtime files
+$requiredRuntimeFiles = @(
+    "CodeOrbit.RuntimeHost.exe",
+    "CodeOrbit.Bridge.exe",
+    "runtime-manifest.json"
+)
+foreach ($file in $requiredRuntimeFiles) {
+    $path = Join-Path $bundledRuntimeDir $file
+    if (-not (Test-Path $path)) {
+        throw "Missing required Runtime file: $file in $bundledRuntimeDir"
+    }
 }
 
 $stagingDir = Join-Path $projectRoot ".installer-staging"
@@ -123,12 +113,13 @@ try {
     }
     New-Item -ItemType Directory -Path $stagingDir | Out-Null
 
-    Write-Host "Copying full publish outputs to installer staging directory..." -ForegroundColor Cyan
+    Write-Host "Copying WpfApp to installer staging directory..." -ForegroundColor Cyan
     Copy-Item -Path (Join-Path $appPublish "*") -Destination $stagingDir -Recurse -Force
+
+    Write-Host "Copying bundled CodeOrbit Runtime..." -ForegroundColor Cyan
     $runtimeCurrentDir = Join-Path $stagingDir "runtime\current"
-    New-Item -ItemType Directory -Path $runtimeCurrentDir | Out-Null
-    Copy-Item -Path (Join-Path $bridgePublish "*") -Destination $runtimeCurrentDir -Recurse -Force
-    Copy-Item -Path (Join-Path $runtimeHostPublish "*") -Destination $runtimeCurrentDir -Recurse -Force
+    New-Item -ItemType Directory -Path $runtimeCurrentDir -Force | Out-Null
+    Copy-Item -Path (Join-Path $bundledRuntimeDir "*") -Destination $runtimeCurrentDir -Recurse -Force
 
     if (-not (Test-Path $outputPath)) {
         New-Item -ItemType Directory -Path $outputPath | Out-Null
@@ -138,7 +129,6 @@ try {
     $version = $versionInfo.ProductVersion
     if (-not $version) { $version = $versionInfo.FileVersion }
     if (-not $version) { $version = "0.0.0" }
-    Write-RuntimeManifest -RuntimeDir $runtimeCurrentDir -RuntimeVersion $version
 
     $setupBaseName = "CodeIsland-Windows-Setup-v$version"
     Write-Host "Creating $setupBaseName.exe..." -ForegroundColor Cyan
@@ -153,7 +143,15 @@ try {
         throw "Installer output not found: $installerPath"
     }
 
+    Write-Host ""
     Write-Host "Installer created: $installerPath" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Installer contents:" -ForegroundColor Cyan
+    Write-Host "  - CodeIsland-Windows.exe (WPF Display Client)" -ForegroundColor Gray
+    Write-Host "  - runtime/current/CodeOrbit.RuntimeHost.exe" -ForegroundColor Gray
+    Write-Host "  - runtime/current/CodeOrbit.Bridge.exe" -ForegroundColor Gray
+    Write-Host "  - runtime/current/runtime-manifest.json" -ForegroundColor Gray
+    Write-Host "  - runtime/current/bundled-plugins/" -ForegroundColor Gray
 }
 finally {
     if (Test-Path $stagingDir) {
