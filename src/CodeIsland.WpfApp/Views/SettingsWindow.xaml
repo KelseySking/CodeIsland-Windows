@@ -380,22 +380,35 @@
               <!-- 现有关于内容 -->
               <views:AboutView />
 
-              <!-- Runtime 信息 -->
-              <TextBlock Text="Runtime 信息" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0,20,0,12" />
+              <!-- CodeOrbit Runtime -->
+              <TextBlock Text="CodeOrbit Runtime" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0,20,0,0" />
 
               <Border Style="{StaticResource SettingsCardStyle}">
-                <StackPanel>
-                  <TextBlock Text="{Binding RuntimeProduct}" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource HudTextBrush}" />
-                  <TextBlock Margin="0,4,0,0">
-                    <Run Text="当前版本: " Foreground="#99FFFFFF" />
-                    <Run Text="{Binding CurrentVersion}" Foreground="{StaticResource HudTextBrush}" FontWeight="Medium" />
-                  </TextBlock>
-                  <TextBlock Margin="0,4,0,0">
-                    <Run Text="最新版本: " Foreground="#99FFFFFF" />
-                    <Run Text="{Binding LatestVersion}" Foreground="{StaticResource HudTextBrush}" FontWeight="Medium" />
-                  </TextBlock>
-                  <TextBlock Text="{Binding UpdateCheckStatus}" FontSize="12" Foreground="#D9FFFFFF" Margin="0,8,0,0" />
-                </StackPanel>
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="当前版本" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="{Binding RuntimeProduct}" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Text="{Binding CurrentVersion}" FontSize="14" FontWeight="Medium" Foreground="{StaticResource HudTextBrush}" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="版本检测" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="{Binding UpdateCheckStatus}" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Text="{Binding LatestVersion}" FontSize="14" FontWeight="Medium" Foreground="{StaticResource HudTextBrush}" VerticalAlignment="Center" />
+                </Grid>
               </Border>
             </StackPanel>
           </ScrollViewer>
