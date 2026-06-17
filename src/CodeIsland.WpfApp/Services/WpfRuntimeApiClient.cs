@@ -128,6 +128,11 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
         return true;
     }
 
+    public async Task<ApiVersionDto?> GetVersionAsync(CancellationToken ct = default)
+    {
+        return await GetJsonAsync<ApiVersionDto>("version", ct).ConfigureAwait(false);
+    }
+
     public IReadOnlyList<SourceDto> GetSources()
     {
         var sources = RunSyncNullable(() => GetJsonAsync<List<SourceDto>>("sources", CancellationToken.None));

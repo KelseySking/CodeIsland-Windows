@@ -17,6 +17,7 @@
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
         <RowDefinition Height="*" />
       </Grid.RowDefinitions>
 
@@ -38,7 +39,15 @@
         </Grid>
       </Border>
 
-      <TabControl x:Name="SettingsTabs" Grid.Row="2" Background="Transparent" BorderThickness="0" Foreground="{StaticResource HudTextBrush}">
+      <!-- Runtime 状态栏 -->
+      <Border Grid.Row="2" Style="{StaticResource SettingsCardStyle}" Margin="0,0,0,12" Padding="10,8">
+        <StackPanel Orientation="Horizontal">
+          <Ellipse Width="10" Height="10" Fill="{Binding RuntimeStatusColor}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding RuntimeConnectionStatus}" FontSize="12" Foreground="#D9FFFFFF" Margin="10,0,0,0" />
+        </StackPanel>
+      </Border>
+
+      <TabControl x:Name="SettingsTabs" Grid.Row="3" Background="Transparent" BorderThickness="0" Foreground="{StaticResource HudTextBrush}" SelectionChanged="SettingsTabs_SelectionChanged">
         <TabItem Header="通用">
           <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12,8,0">
             <StackPanel>
@@ -327,39 +336,69 @@
             <StackPanel>
               <TextBlock Text="工具连接" Style="{StaticResource SettingsSectionTitleStyle}" />
 
-              <Border Style="{StaticResource SettingsCardStyle}">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                  </Grid.ColumnDefinitions>
-                  <StackPanel>
-                    <TextBlock Text="Claude Code" Style="{StaticResource SettingsLabelStyle}" />
-                    <TextBlock Text="让 CodeIsland 接收 Claude Code 的状态。" Style="{StaticResource SettingsHelpStyle}" />
-                  </StackPanel>
-                  <Button x:Name="ClaudeHookButton" Grid.Column="1" Tag="claude" Content="连接" Click="HookToggle_Click" Padding="16,7" VerticalAlignment="Center" />
-                </Grid>
-              </Border>
+              <!-- 工具列表 -->
+              <ItemsControl ItemsSource="{Binding Sources}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="Auto" />
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-              <Border Style="{StaticResource SettingsCardStyle}">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                  </Grid.ColumnDefinitions>
-                  <StackPanel>
-                    <TextBlock Text="Codex" Style="{StaticResource SettingsLabelStyle}" />
-                    <TextBlock Text="让 CodeIsland 接收 Codex 的状态。" Style="{StaticResource SettingsHelpStyle}" />
-                  </StackPanel>
-                  <Button x:Name="CodexHookButton" Grid.Column="1" Tag="codex" Content="连接" Click="HookToggle_Click" Padding="16,7" VerticalAlignment="Center" />
-                </Grid>
-              </Border>
+                        <!-- 图标 -->
+                        <ContentControl Grid.Column="0" Content="{StaticResource {Binding IconResourceKey}}" Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,12,0" />
+
+                        <!-- 名称和描述 -->
+                        <StackPanel Grid.Column="1">
+                          <TextBlock Text="{Binding DisplayName}" Style="{StaticResource SettingsLabelStyle}" />
+                          <TextBlock Text="让 CodeIsland 接收该工具的状态。" Style="{StaticResource SettingsHelpStyle}" />
+                        </StackPanel>
+
+                        <!-- 操作按钮 -->
+                        <Button Grid.Column="2"
+                                Content="{Binding ButtonContent}"
+                                IsEnabled="{Binding ButtonEnabled}"
+                                Tag="{Binding}"
+                                Click="SourceToggle_Click"
+                                Padding="16,7"
+                                VerticalAlignment="Center" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
             </StackPanel>
           </ScrollViewer>
         </TabItem>
 
         <TabItem Header="关于">
-          <views:AboutView Margin="0,12,8,0" />
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12,8,0">
+            <StackPanel>
+              <!-- 现有关于内容 -->
+              <views:AboutView />
+
+              <!-- Runtime 信息 -->
+              <TextBlock Text="Runtime 信息" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0,20,0,12" />
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel>
+                  <TextBlock Text="{Binding RuntimeProduct}" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource HudTextBrush}" />
+                  <TextBlock Margin="0,4,0,0">
+                    <Run Text="当前版本: " Foreground="#99FFFFFF" />
+                    <Run Text="{Binding CurrentVersion}" Foreground="{StaticResource HudTextBrush}" FontWeight="Medium" />
+                  </TextBlock>
+                  <TextBlock Margin="0,4,0,0">
+                    <Run Text="最新版本: " Foreground="#99FFFFFF" />
+                    <Run Text="{Binding LatestVersion}" Foreground="{StaticResource HudTextBrush}" FontWeight="Medium" />
+                  </TextBlock>
+                  <TextBlock Text="{Binding UpdateCheckStatus}" FontSize="12" Foreground="#D9FFFFFF" Margin="0,8,0,0" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
         </TabItem>
       </TabControl>
     </Grid>

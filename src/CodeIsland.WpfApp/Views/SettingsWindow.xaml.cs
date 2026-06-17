@@ -1,14 +1,23 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using CodeIsland.Contracts;
 using CodeIsland.WpfApp.Services;
+using CodeIsland.WpfApp.ViewModels;
 
 namespace CodeIsland.WpfApp.Views;
 
 public partial class SettingsWindow : Window, INotifyPropertyChanged
 {
+    private const string UpdateManifestUrl = "https://raw.githubusercontent.com/example/codeorbit-releases/main/update-manifest.json";
+    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
+
     private readonly SettingsManager _settings;
     private readonly IWpfSourceService _sourceService;
     private bool _autoApproveSafeTools;
@@ -28,6 +37,20 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private bool _showFullRecentMessages;
     private double _volumePercent = 70;
     private string _feedbackText = "设置会自动保存。";
+
+    // Runtime 状态栏
+    private string _runtimeConnectionStatus = "Runtime 连接中...";
+    private string _runtimeVersion = "";
+    private System.Windows.Media.Brush _runtimeStatusColor = System.Windows.Media.Brushes.Gray;
+
+    // 工具列表
+    private bool _sourcesLoaded;
+
+    // 关于页 - 更新检测
+    private string _runtimeProduct = "";
+    private string _currentVersion = "";
+    private string _latestVersion = "";
+    private string _updateCheckStatus = "";
 
     public SettingsWindow(SettingsManager settings, IWpfSourceService? sourceService = null)
     {
@@ -52,13 +75,111 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _volumePercent = Math.Clamp(_settings.Get("volume", 0.7), 0.0, 1.0) * 100.0;
         DataContext = this;
         RefreshMonitorOptions();
-        RefreshHookButtons();
+
+        // 加载 Runtime 状态
+        _ = LoadRuntimeStatusAsync();
+
+        // 加载工具列表
+        _ = LoadSourcesAsync();
     }
 
     public event Func<string, string, string, bool>? HotkeysChangeRequested;
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<DisplayMonitorOption> DisplayMonitorOptions { get; } = new();
+
+    // 工具列表
+    public ObservableCollection<SourceViewModel> Sources { get; } = new();
+
+    public bool SourcesLoaded
+    {
+        get => _sourcesLoaded;
+        set
+        {
+            if (_sourcesLoaded == value) return;
+            _sourcesLoaded = value;
+            OnPropertyChanged();
+        }
+    }
+
+    // Runtime 状态栏
+    public string RuntimeConnectionStatus
+    {
+        get => _runtimeConnectionStatus;
+        set
+        {
+            if (string.Equals(_runtimeConnectionStatus, value, StringComparison.Ordinal)) return;
+            _runtimeConnectionStatus = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string RuntimeVersion
+    {
+        get => _runtimeVersion;
+        set
+        {
+            if (string.Equals(_runtimeVersion, value, StringComparison.Ordinal)) return;
+            _runtimeVersion = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public System.Windows.Media.Brush RuntimeStatusColor
+    {
+        get => _runtimeStatusColor;
+        set
+        {
+            if (_runtimeStatusColor == value) return;
+            _runtimeStatusColor = value;
+            OnPropertyChanged();
+        }
+    }
+
+    // 关于页 - 更新检测
+    public string RuntimeProduct
+    {
+        get => _runtimeProduct;
+        set
+        {
+            if (string.Equals(_runtimeProduct, value, StringComparison.Ordinal)) return;
+            _runtimeProduct = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string CurrentVersion
+    {
+        get => _currentVersion;
+        set
+        {
+            if (string.Equals(_currentVersion, value, StringComparison.Ordinal)) return;
+            _currentVersion = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string LatestVersion
+    {
+        get => _latestVersion;
+        set
+        {
+            if (string.Equals(_latestVersion, value, StringComparison.Ordinal)) return;
+            _latestVersion = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string UpdateCheckStatus
+    {
+        get => _updateCheckStatus;
+        set
+        {
+            if (string.Equals(_updateCheckStatus, value, StringComparison.Ordinal)) return;
+            _updateCheckStatus = value;
+            OnPropertyChanged();
+        }
+    }
 
     public bool AutoApproveSafeTools
     {
@@ -378,88 +499,198 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         SettingsTabs.SelectedIndex = Math.Max(0, SettingsTabs.Items.Count - 1);
     }
 
-    private void HookToggle_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not System.Windows.Controls.Button button || button.Tag is not string source)
-            return;
-
-        var displayName = GetSourceDisplayName(source);
-        if (!TryGetSourceInstalled(source, out var installed))
-        {
-            FeedbackText = $"{displayName} 状态读取失败：Runtime 未连接或启动中";
-            RefreshHookButtons();
-            return;
-        }
-
-        try
-        {
-            var result = installed ? _sourceService.Uninstall(source) : _sourceService.Install(source);
-            FeedbackText = result.Success
-                ? $"{displayName} 已{(installed ? "断开" : "连接")}"
-                : BuildHookFailureText(displayName, installed, result.Message);
-        }
-        catch
-        {
-            FeedbackText = $"{displayName} {(installed ? "断开" : "连接")}失败：Runtime 未连接或启动中";
-        }
-
-        RefreshHookButtons();
-    }
-
-    private bool TryGetSourceInstalled(string source, out bool installed)
-    {
-        try
-        {
-            var status = _sourceService.GetSourceStatus(source);
-            installed = status.Installed;
-            return status.Supported;
-        }
-        catch
-        {
-            installed = false;
-            return false;
-        }
-    }
-
-    private static string BuildHookFailureText(string displayName, bool wasInstalled, string? message)
-    {
-        var operationText = wasInstalled ? "断开" : "连接";
-        if (!string.IsNullOrWhiteSpace(message) &&
-            message.Contains("Runtime", StringComparison.OrdinalIgnoreCase))
-        {
-            return $"{displayName} {operationText}失败：Runtime 未连接或启动中";
-        }
-
-        return $"{displayName} {operationText}失败";
-    }
-
-    private void RefreshHookButtons()
-    {
-        UpdateHookButton(ClaudeHookButton, "claude");
-        UpdateHookButton(CodexHookButton, "codex");
-    }
-
-    private static string GetSourceDisplayName(string source) => source.Equals("claude", StringComparison.OrdinalIgnoreCase) ? "Claude Code" : "Codex";
-
-    private void UpdateHookButton(System.Windows.Controls.Button button, string source)
-    {
-        if (!TryGetSourceInstalled(source, out var installed))
-        {
-            button.Content = "连接";
-            button.Background = System.Windows.Media.Brushes.DarkGray;
-            button.Foreground = System.Windows.Media.Brushes.White;
-            return;
-        }
-
-        button.Content = installed ? "断开" : "连接";
-        button.Background = installed
-            ? System.Windows.Media.Brushes.IndianRed
-            : System.Windows.Media.Brushes.ForestGreen;
-        button.Foreground = System.Windows.Media.Brushes.White;
-    }
-
     public sealed record DisplayMonitorOption(string Id, string DisplayName);
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+    private async Task LoadRuntimeStatusAsync()
+    {
+        try
+        {
+            if (_sourceService is not WpfRuntimeApiClient apiClient)
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    RuntimeConnectionStatus = "Runtime 未连接";
+                    RuntimeStatusColor = System.Windows.Media.Brushes.Gray;
+                });
+                return;
+            }
+
+            var version = await apiClient.GetVersionAsync(CancellationToken.None).ConfigureAwait(false);
+            if (version != null)
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    RuntimeVersion = $"v{version.Version}";
+                    RuntimeProduct = version.Product;
+                    CurrentVersion = version.Version;
+                    RuntimeConnectionStatus = $"Runtime 已连接 {RuntimeVersion}";
+                    RuntimeStatusColor = System.Windows.Media.Brushes.ForestGreen;
+                });
+            }
+            else
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    RuntimeConnectionStatus = "Runtime 未连接";
+                    RuntimeStatusColor = System.Windows.Media.Brushes.Gray;
+                });
+            }
+        }
+        catch
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                RuntimeConnectionStatus = "Runtime 未连接";
+                RuntimeStatusColor = System.Windows.Media.Brushes.Gray;
+            });
+        }
+    }
+
+    private async Task LoadSourcesAsync()
+    {
+        try
+        {
+            var sources = _sourceService.GetSources();
+            await Dispatcher.InvokeAsync(() =>
+            {
+                Sources.Clear();
+                foreach (var dto in sources)
+                {
+                    Sources.Add(new SourceViewModel(dto));
+                }
+                SourcesLoaded = Sources.Count > 0;
+            });
+        }
+        catch
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                SourcesLoaded = false;
+                FeedbackText = "工具列表加载失败：Runtime 未连接";
+            });
+        }
+    }
+
+    private async void SourceToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button button || button.Tag is not SourceViewModel vm)
+            return;
+
+        vm.IsOperating = true;
+        var displayName = vm.DisplayName;
+
+        try
+        {
+            var result = vm.Installed
+                ? _sourceService.Uninstall(vm.Id)
+                : _sourceService.Install(vm.Id);
+
+            FeedbackText = result.Success
+                ? $"{displayName} 已{(vm.Installed ? "断开" : "连接")}"
+                : BuildOperationFailureText(displayName, vm.Installed, result.Message);
+
+            // 刷新列表
+            await LoadSourcesAsync();
+        }
+        catch
+        {
+            FeedbackText = $"{displayName} 操作失败：Runtime 未连接";
+        }
+        finally
+        {
+            vm.IsOperating = false;
+        }
+    }
+
+    private static string BuildOperationFailureText(string displayName, bool wasInstalled, string? message)
+    {
+        var operationText = wasInstalled ? "断开" : "连接";
+        if (!string.IsNullOrWhiteSpace(message) && message.Contains("Runtime", StringComparison.OrdinalIgnoreCase))
+            return $"{displayName} {operationText}失败：Runtime 未连接";
+        return $"{displayName} {operationText}失败";
+    }
+
+    private void SettingsTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SettingsTabs.SelectedIndex == GetAboutTabIndex())
+        {
+            _ = CheckForUpdatesAsync();
+        }
+    }
+
+    private int GetAboutTabIndex()
+    {
+        return SettingsTabs.Items.Count - 1;
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        if (string.IsNullOrEmpty(CurrentVersion))
+            return;
+
+        UpdateCheckStatus = "检测更新中...";
+
+        try
+        {
+            var manifest = await FetchUpdateManifestAsync().ConfigureAwait(false);
+            if (manifest == null)
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    UpdateCheckStatus = "检测失败，请稍后重试";
+                });
+                return;
+            }
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                LatestVersion = manifest.RuntimeVersion;
+                var comparison = CompareVersions(CurrentVersion, manifest.RuntimeVersion);
+                UpdateCheckStatus = comparison switch
+                {
+                    < 0 => $"有新版本可用：v{manifest.RuntimeVersion}",
+                    0 => "已是最新版本",
+                    > 0 => "当前版本较新（开发版本）"
+                };
+            });
+        }
+        catch (TaskCanceledException)
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                UpdateCheckStatus = "检测超时，请稍后重试";
+            });
+        }
+        catch
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                UpdateCheckStatus = "检测失败，请稍后重试";
+            });
+        }
+    }
+
+    private static async Task<UpdateManifest?> FetchUpdateManifestAsync()
+    {
+        try
+        {
+            return await HttpClient.GetFromJsonAsync<UpdateManifest>(UpdateManifestUrl).ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static int CompareVersions(string current, string latest)
+    {
+        if (!Version.TryParse(current, out var v1) || !Version.TryParse(latest, out var v2))
+            return 0;
+        return v1.CompareTo(v2);
+    }
+
+    private sealed record UpdateManifest(string RuntimeVersion, string ContractVersion, string DownloadUrl, string Sha256);
 }
