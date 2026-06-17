@@ -146,3 +146,5 @@ Gemini CLI、Cursor、GitHub Copilot、Cline 等其他工具属于后续适配�
 ## 许可证
 
 MIT License
+
+<center>该项目已在 [LINUX DO](https://linux.do) 社区分享。</center>

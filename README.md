@@ -148,3 +148,5 @@ This project was inspired by [CodeIsland (macOS)](https://github.com/wxtsky/Code
 ## License
 
 MIT License
+
+<center>This project has been shared on the [LINUX DO](https://linux.do).</center>
