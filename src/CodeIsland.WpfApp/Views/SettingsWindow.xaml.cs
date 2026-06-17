@@ -15,8 +15,8 @@ namespace CodeIsland.WpfApp.Views;
 
 public partial class SettingsWindow : Window, INotifyPropertyChanged
 {
-    private const string UpdateManifestUrl = "https://raw.githubusercontent.com/example/codeorbit-releases/main/update-manifest.json";
-    private const string GitHubReleasesUrl = "https://github.com/example/CodeOrbit/releases";
+    private const string UpdateManifestUrl = "https://raw.githubusercontent.com/KelseySking/CodeOrbit/main/update-manifest.json";
+    private const string GitHubReleasesUrl = "https://github.com/KelseySking/CodeOrbit/releases";
     private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     private readonly SettingsManager _settings;
