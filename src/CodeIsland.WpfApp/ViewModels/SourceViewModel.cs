@@ -18,7 +18,7 @@ public sealed class SourceViewModel : INotifyPropertyChanged
     public string DisplayName => _dto.DisplayName;
     public bool Installed => _dto.Installed;
 
-    public string IconResourceKey => MapIconName(_dto.IconName);
+    public string IconText => MapIconText(_dto.IconName);
 
     public string ButtonContent => Installed ? "断开" : "连接";
 
@@ -36,13 +36,13 @@ public sealed class SourceViewModel : INotifyPropertyChanged
 
     public bool ButtonEnabled => !IsOperating;
 
-    private static string MapIconName(string iconName)
+    private static string MapIconText(string iconName)
     {
         return iconName?.ToLowerInvariant() switch
         {
-            "claude" => "ClaudeIcon",
-            "codex" => "CodexIcon",
-            _ => "DefaultSourceIcon"
+            "claude" => "🤖",
+            "codex" => "⚙️",
+            _ => "🔌"
         };
     }
 
