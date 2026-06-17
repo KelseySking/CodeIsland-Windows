@@ -47,7 +47,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     // 工具列表
     private bool _sourcesLoaded;
 
-    // 关于页 - 更新检测
+    // CodeOrbit 版本检测
     private string _runtimeProduct = "";
     private string _currentVersion = "";
     private string _latestVersion = "";
