@@ -1,0 +1,27 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "kiro",
+    "display_name": "Kiro",
+    "icon_name": "kiro",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["kiro", "kiro-cli"],
+    "path_patterns": ["*kiro*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "nested",
+    "config_path": "~/.kiro/hooks.json",
+    "events": [
+      "PreToolUse",
+      "PostToolUse",
+      "UserPromptSubmit",
+      "SessionStart",
+      "SessionEnd",
+      "Stop"
+    ],
+    "timeout_seconds": 10
+  }
+}

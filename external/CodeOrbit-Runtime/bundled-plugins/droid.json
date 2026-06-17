@@ -1,0 +1,33 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "droid",
+    "display_name": "Factory",
+    "icon_name": "factory",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["droid", "factory"],
+    "path_patterns": ["*droid*", "*factory*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "claude-matcher",
+    "config_path": "~/.factory/settings.json",
+    "events": [
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PostToolUse",
+      "PostToolUseFailure",
+      "PermissionRequest",
+      "Stop",
+      "SubagentStart",
+      "SubagentStop",
+      "SessionStart",
+      "SessionEnd",
+      "Notification",
+      "PreCompact"
+    ],
+    "timeout_seconds": 120
+  }
+}

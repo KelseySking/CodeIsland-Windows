@@ -1,0 +1,35 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "cursor",
+    "display_name": "Cursor",
+    "icon_name": "cursor",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["cursor", "cursor-agent"],
+    "path_patterns": ["*cursor*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "flat",
+    "config_path": "~/.cursor/hooks.json",
+    "events": [
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PostToolUse",
+      "SubagentStart",
+      "SubagentStop"
+    ],
+    "timeout_seconds": 5
+  },
+  "event_mappings": {
+    "beforeSubmitPrompt": "UserPromptSubmit",
+    "beforeShellExecution": "PreToolUse",
+    "afterShellExecution": "PostToolUse",
+    "beforeMcpToolExecution": "PreToolUse",
+    "afterMcpToolExecution": "PostToolUse",
+    "subagentStart": "SubagentStart",
+    "subagentStop": "SubagentStop"
+  }
+}

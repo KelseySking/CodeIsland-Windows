@@ -15,7 +15,7 @@
     "priority": 1000
   },
   "hook_installation": {
-    "format": "nested",
+    "format": "codex",
     "config_path": "~/.codex/hooks.json",
     "events": [
       "SessionStart",

@@ -1,0 +1,33 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "qwen",
+    "display_name": "Qwen Code",
+    "icon_name": "qwen",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["qwen", "qwen-code"],
+    "path_patterns": ["*qwen*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "claude-matcher",
+    "config_path": "~/.qwen/settings.json",
+    "events": [
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PostToolUse",
+      "PostToolUseFailure",
+      "PermissionRequest",
+      "Stop",
+      "SubagentStart",
+      "SubagentStop",
+      "SessionStart",
+      "SessionEnd",
+      "Notification",
+      "PreCompact"
+    ],
+    "timeout_seconds": 120
+  }
+}

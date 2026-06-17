@@ -1,0 +1,31 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "gemini",
+    "display_name": "Gemini CLI",
+    "icon_name": "gemini",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["gemini", "gemini-cli"],
+    "path_patterns": ["*gemini*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "nested",
+    "config_path": "~/.gemini/settings.json",
+    "events": [
+      "PreToolUse",
+      "PostToolUse",
+      "SubagentStart",
+      "SubagentStop"
+    ],
+    "timeout_seconds": 5
+  },
+  "event_mappings": {
+    "BeforeTool": "PreToolUse",
+    "AfterTool": "PostToolUse",
+    "BeforeAgent": "SubagentStart",
+    "AfterAgent": "SubagentStop"
+  }
+}
