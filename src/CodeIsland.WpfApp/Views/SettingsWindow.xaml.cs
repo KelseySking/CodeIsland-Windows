@@ -40,7 +40,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private string _feedbackText = "设置会自动保存。";
 
     // Runtime 状态栏
-    private string _runtimeConnectionStatus = "Runtime 连接中...";
+    private string _runtimeConnectionStatus = "CodeOrbit 连接中...";
     private string _runtimeVersion = "";
     private System.Windows.Media.Brush _runtimeStatusColor = System.Windows.Media.Brushes.Gray;
 
@@ -513,7 +513,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             {
                 await Dispatcher.InvokeAsync(() =>
                 {
-                    RuntimeConnectionStatus = "Runtime 未连接";
+                    RuntimeConnectionStatus = "CodeOrbit 未连接";
                     RuntimeStatusColor = System.Windows.Media.Brushes.Gray;
                 });
                 return;
@@ -527,7 +527,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                     RuntimeVersion = $"v{version.Version}";
                     RuntimeProduct = version.Product;
                     CurrentVersion = version.Version;
-                    RuntimeConnectionStatus = $"Runtime 已连接 {RuntimeVersion}";
+                    RuntimeConnectionStatus = $"CodeOrbit 已连接 {RuntimeVersion}";
                     RuntimeStatusColor = System.Windows.Media.Brushes.ForestGreen;
                 });
             }
@@ -535,7 +535,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             {
                 await Dispatcher.InvokeAsync(() =>
                 {
-                    RuntimeConnectionStatus = "Runtime 未连接";
+                    RuntimeConnectionStatus = "CodeOrbit 未连接";
                     RuntimeStatusColor = System.Windows.Media.Brushes.Gray;
                 });
             }
@@ -544,7 +544,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         {
             await Dispatcher.InvokeAsync(() =>
             {
-                RuntimeConnectionStatus = "Runtime 未连接";
+                RuntimeConnectionStatus = "CodeOrbit 未连接";
                 RuntimeStatusColor = System.Windows.Media.Brushes.Gray;
             });
         }
