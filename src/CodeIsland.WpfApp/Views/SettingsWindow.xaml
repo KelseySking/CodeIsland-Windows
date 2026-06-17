@@ -375,42 +375,33 @@
         </TabItem>
 
         <TabItem Header="关于">
-          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12,8,0">
-            <StackPanel>
-              <!-- 现有关于内容 -->
-              <views:AboutView />
+          <views:AboutView Margin="0,12,8,0" />
+        </TabItem>
 
-              <!-- CodeOrbit Runtime -->
-              <TextBlock Text="CodeOrbit Runtime" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0,20,0,0" />
+        <TabItem Header="CodeOrbit">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Grid VerticalAlignment="Center" Margin="0,40,0,0">
+              <StackPanel HorizontalAlignment="Center" MaxWidth="500">
+                <TextBlock Text="CodeOrbit Runtime" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource HudTextBrush}" HorizontalAlignment="Center" Margin="0,0,0,24" />
 
-              <Border Style="{StaticResource SettingsCardStyle}">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                  </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource SettingsCardStyle}">
                   <StackPanel>
-                    <TextBlock Text="当前版本" Style="{StaticResource SettingsLabelStyle}" />
-                    <TextBlock Text="{Binding RuntimeProduct}" Style="{StaticResource SettingsHelpStyle}" />
+                    <TextBlock Text="当前版本" Style="{StaticResource SettingsLabelStyle}" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding RuntimeProduct}" FontSize="12" Foreground="#80FFFFFF" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding CurrentVersion}" FontSize="20" FontWeight="Medium" Foreground="{StaticResource HudTextBrush}" HorizontalAlignment="Center" Margin="0,8,0,0" />
                   </StackPanel>
-                  <TextBlock Grid.Column="1" Text="{Binding CurrentVersion}" FontSize="14" FontWeight="Medium" Foreground="{StaticResource HudTextBrush}" VerticalAlignment="Center" />
-                </Grid>
-              </Border>
+                </Border>
 
-              <Border Style="{StaticResource SettingsCardStyle}">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                  </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource SettingsCardStyle}">
                   <StackPanel>
-                    <TextBlock Text="版本检测" Style="{StaticResource SettingsLabelStyle}" />
-                    <TextBlock Text="{Binding UpdateCheckStatus}" Style="{StaticResource SettingsHelpStyle}" />
+                    <TextBlock Text="版本检测" Style="{StaticResource SettingsLabelStyle}" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding UpdateCheckStatus}" FontSize="12" Foreground="#D9FFFFFF" HorizontalAlignment="Center" Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding LatestVersion}" FontSize="16" FontWeight="Medium" Foreground="{StaticResource HudAccentBrush}" HorizontalAlignment="Center" Margin="0,8,0,12" />
+                    <Button Content="查看 GitHub 发布" Click="OpenGitHubReleases_Click" HorizontalAlignment="Center" Padding="20,8" />
                   </StackPanel>
-                  <TextBlock Grid.Column="1" Text="{Binding LatestVersion}" FontSize="14" FontWeight="Medium" Foreground="{StaticResource HudTextBrush}" VerticalAlignment="Center" />
-                </Grid>
-              </Border>
-            </StackPanel>
+                </Border>
+              </StackPanel>
+            </Grid>
           </ScrollViewer>
         </TabItem>
       </TabControl>

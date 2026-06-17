@@ -16,6 +16,7 @@ namespace CodeIsland.WpfApp.Views;
 public partial class SettingsWindow : Window, INotifyPropertyChanged
 {
     private const string UpdateManifestUrl = "https://raw.githubusercontent.com/example/codeorbit-releases/main/update-manifest.json";
+    private const string GitHubReleasesUrl = "https://github.com/example/CodeOrbit/releases";
     private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     private readonly SettingsManager _settings;
@@ -615,15 +616,31 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
     private void SettingsTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (SettingsTabs.SelectedIndex == GetAboutTabIndex())
+        if (SettingsTabs.SelectedIndex == GetCodeOrbitTabIndex())
         {
             _ = CheckForUpdatesAsync();
         }
     }
 
-    private int GetAboutTabIndex()
+    private int GetCodeOrbitTabIndex()
     {
         return SettingsTabs.Items.Count - 1;
+    }
+
+    private void OpenGitHubReleases_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = GitHubReleasesUrl,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            FeedbackText = "无法打开浏览器，请手动访问 GitHub Releases";
+        }
     }
 
     private async Task CheckForUpdatesAsync()
