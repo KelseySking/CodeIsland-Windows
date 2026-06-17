@@ -205,6 +205,40 @@ public abstract record SideEffect
 
 public static class WpfSourceDisplay
 {
+    private static readonly IReadOnlyDictionary<string, string> CliIconNames = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["antigravity"] = "antigravity",
+        ["claude"] = "claude",
+        ["claudecode"] = "claude",
+        ["claudecli"] = "claude",
+        ["cline"] = "cline",
+        ["codebuddy"] = "codebuddy",
+        ["codex"] = "codex",
+        ["codexcli"] = "codex",
+        ["openaicodex"] = "codex",
+        ["copilot"] = "copilot",
+        ["githubcopilot"] = "copilot",
+        ["cursor"] = "cursor",
+        ["cursorcli"] = "cursor",
+        ["factory"] = "factory",
+        ["factoryai"] = "factory",
+        ["gemini"] = "gemini",
+        ["geminicli"] = "gemini",
+        ["googlegemini"] = "gemini",
+        ["hermes"] = "hermes",
+        ["kimi"] = "kimi",
+        ["opencode"] = "opencode",
+        ["pi"] = "pi",
+        ["qoder"] = "qoder",
+        ["qwen"] = "qwen",
+        ["qwencode"] = "qwen",
+        ["stepfun"] = "stepfun",
+        ["stepfunai"] = "stepfun",
+        ["trae"] = "trae",
+        ["traeai"] = "trae",
+        ["workbuddy"] = "workbuddy"
+    };
+
     public static string GetDisplayName(string? source, string? providedDisplayName = null)
     {
         if (!string.IsNullOrWhiteSpace(providedDisplayName))
@@ -220,12 +254,47 @@ public static class WpfSourceDisplay
         };
     }
 
-    public static string GetIconName(string? source) => source?.ToLowerInvariant() switch
+    public static string GetIconName(string? source)
     {
-        "claude" => "claude",
-        "codex" => "codex",
-        "codeisland" => "codeisland",
-        "unknown" or null or "" => "unknown",
-        _ => source
-    };
+        var iconName = GetCliIconName(source);
+        if (!string.IsNullOrWhiteSpace(iconName))
+            return iconName;
+
+        return string.IsNullOrWhiteSpace(source) ? "unknown" : source;
+    }
+
+    public static string? GetCliIconName(params string?[] candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            var key = NormalizeIconKey(candidate);
+            if (key.Length > 0 && CliIconNames.TryGetValue(key, out var iconName))
+                return iconName;
+        }
+
+        return null;
+    }
+
+    public static string? GetCliIconUri(params string?[] candidates)
+    {
+        var iconName = GetCliIconName(candidates);
+        return string.IsNullOrWhiteSpace(iconName)
+            ? null
+            : $"pack://application:,,,/Assets/cli-icons/{Uri.EscapeDataString(iconName)}.png";
+    }
+
+    private static string NormalizeIconKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var normalized = value.Trim();
+        var lastSeparator = Math.Max(normalized.LastIndexOf('/'), normalized.LastIndexOf('\\'));
+        if (lastSeparator >= 0 && lastSeparator < normalized.Length - 1)
+            normalized = normalized[(lastSeparator + 1)..];
+        if (normalized.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized[..^4];
+
+        return new string(normalized.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+    }
 }

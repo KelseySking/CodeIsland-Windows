@@ -8,7 +8,7 @@ public sealed class WpfHudListGroupViewModel
     {
         SourceKey = string.IsNullOrWhiteSpace(sourceKey) ? "unknown" : sourceKey;
         SourceDisplayName = WpfSourceDisplay.GetDisplayName(SourceKey);
-        SourceIconUri = BuildSourceIconUri(SourceKey);
+        SourceIconUri = WpfSourceDisplay.GetCliIconUri(SourceKey);
         CountText = $"{items.Count} 项";
         IconFallbackText = GetFallbackText(SourceDisplayName);
         Items = items;
@@ -16,16 +16,10 @@ public sealed class WpfHudListGroupViewModel
 
     public string SourceKey { get; }
     public string SourceDisplayName { get; }
-    public string SourceIconUri { get; }
+    public string? SourceIconUri { get; }
     public string CountText { get; }
     public string IconFallbackText { get; }
     public IReadOnlyList<WpfHudListItemViewModel> Items { get; }
-
-    private static string BuildSourceIconUri(string sourceKey)
-    {
-        var iconName = WpfSourceDisplay.GetIconName(sourceKey);
-        return $"pack://application:,,,/Assets/cli-icons/{Uri.EscapeDataString(iconName)}.png";
-    }
 
     private static string GetFallbackText(string sourceDisplayName)
     {

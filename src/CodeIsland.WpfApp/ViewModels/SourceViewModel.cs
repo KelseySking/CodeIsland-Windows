@@ -1,24 +1,29 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using CodeIsland.Contracts;
+using CodeIsland.WpfApp.Models;
 
 namespace CodeIsland.WpfApp.ViewModels;
 
 public sealed class SourceViewModel : INotifyPropertyChanged
 {
     private readonly SourceDto _dto;
+    private readonly string? _sourceIconUri;
     private bool _isOperating;
 
     public SourceViewModel(SourceDto dto)
     {
         _dto = dto;
+        _sourceIconUri = WpfSourceDisplay.GetCliIconUri(dto.IconName, dto.Id, dto.DisplayName);
     }
 
     public string Id => _dto.Id;
     public string DisplayName => _dto.DisplayName;
     public bool Installed => _dto.Installed;
 
-    public string IconText => MapIconText(_dto.IconName);
+    public string IconFallbackText => GetFallbackText(DisplayName);
+    public string? SourceIconUri => _sourceIconUri;
+    public bool HasSourceIcon => !string.IsNullOrWhiteSpace(_sourceIconUri);
 
     public string ButtonContent => Installed ? "断开" : "连接";
 
@@ -36,14 +41,10 @@ public sealed class SourceViewModel : INotifyPropertyChanged
 
     public bool ButtonEnabled => !IsOperating;
 
-    private static string MapIconText(string iconName)
+    private static string GetFallbackText(string displayName)
     {
-        return iconName?.ToLowerInvariant() switch
-        {
-            "claude" => "🤖",
-            "codex" => "⚙️",
-            _ => "🔌"
-        };
+        var trimmed = displayName.Trim();
+        return trimmed.Length == 0 ? "?" : trimmed[..1].ToUpperInvariant();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

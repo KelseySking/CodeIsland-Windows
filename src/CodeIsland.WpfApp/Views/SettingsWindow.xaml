@@ -349,7 +349,33 @@
                         </Grid.ColumnDefinitions>
 
                         <!-- 图标 -->
-                        <TextBlock Grid.Column="0" Text="{Binding IconText}" FontSize="20" Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,12,0" TextAlignment="Center" />
+                        <Border Grid.Column="0"
+                                Width="32"
+                                Height="32"
+                                CornerRadius="8"
+                                Background="#0FFFFFFF"
+                                BorderBrush="#18FFFFFF"
+                                BorderThickness="1"
+                                VerticalAlignment="Center"
+                                Margin="0,0,12,0">
+                          <Grid>
+                            <TextBlock Text="{Binding IconFallbackText}"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="#BFFFFFFF"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding HasSourceIcon, Converter={x:Static views:InverseBoolVisibilityConverter.Instance}}" />
+                            <Image Source="{Binding SourceIconUri}"
+                                   Width="22"
+                                   Height="22"
+                                   Stretch="Uniform"
+                                   RenderOptions.BitmapScalingMode="HighQuality"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding HasSourceIcon, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+                          </Grid>
+                        </Border>
 
                         <!-- 名称和描述 -->
                         <StackPanel Grid.Column="1">
