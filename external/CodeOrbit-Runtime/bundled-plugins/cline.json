@@ -13,7 +13,7 @@
   },
   "hook_installation": {
     "format": "cline",
-    "config_path": "~/.cline/hooks.json",
+    "config_path": "%USERPROFILE%/Documents/Cline/Hooks",
     "events": [
       "SessionStart",
       "UserPromptSubmit",
