@@ -8,7 +8,7 @@
 
 [中文版本](README_CN.md)
 
-CodeIsland is an **AI coding agent status panel** for Windows. Inspired by the macOS open-source project [CodeIsland](https://github.com/wxtsky/CodeIsland), the Windows version is presented as a desktop HUD floating window. It supports Claude Code and Codex, listens to real-time events through the Hook mechanism, and shows session status, permission approvals, Q&A interactions, and recent task details at the top of the screen.
+CodeIsland is an **AI coding agent status panel** for Windows. Inspired by the macOS open-source project [CodeIsland](https://github.com/wxtsky/CodeIsland), the Windows version is presented as a desktop HUD floating window. It supports multiple AI coding tools through the bundled CodeOrbit Runtime, listens to real-time events through the Hook mechanism, and shows session status, permission approvals, Q&A interactions, and recent task details at the top of the screen.
 
 Project repository: https://github.com/KelseySking/CodeIsland-Windows
 
@@ -28,13 +28,13 @@ Project repository: https://github.com/KelseySking/CodeIsland-Windows
 
 ## Features
 
-- **Real-time agent monitoring** — Claude Code and Codex supported end-to-end; other AI tools planned for future integration
+- **Real-time agent monitoring** — Supports multiple AI coding tools through CodeOrbit Runtime source plugins
 - **Desktop HUD floating window** — Floating display at the top, side, or bottom of the screen, with automatic collapsed/expanded switching and no focus stealing
 - **Session list and details** — View running status, current tool, recent messages, completion summaries, and task details in real time
 - **Permission approvals** — Approve or deny tool permission requests directly from the panel, with global hotkey support
 - **Q&A interaction** — Answer questions from AI tools directly in the panel without switching back to the terminal window
 - **Terminal jump** — Jump to the corresponding terminal tab with one click, including precise Windows Terminal tab-level switching
-- **Automatic Hook installation** — Install or uninstall the CodeIsland Hook for Claude Code and Codex from the settings UI
+- **Automatic Hook installation** — Connect or disconnect supported tools from the settings UI
 - **Webhook forwarding** — Asynchronously deliver key notifications to a custom HTTP(S) endpoint
 - **8-bit sound effects** — Pixel-style sound effects for session start, completion, approval, and other events
 - **Global hotkeys** — Default hotkeys: `Ctrl+Alt+I` to toggle the panel, `Ctrl+Alt+Y` to approve, and `Ctrl+Alt+N` to deny
@@ -115,14 +115,29 @@ After startup, the HUD floating window is shown and a CodeIsland icon appears in
 
 ## Hook Installation
 
-Install or uninstall the Claude Code and Codex Hooks with one click from the Hooks tab in the settings UI.
+Open **Settings > Tool Connections** to connect or disconnect supported tools with one click. The list is provided by the bundled CodeOrbit Runtime plugins, so new Runtime releases can add or update tool integrations without changing the display client.
 
 | Tool | Status |
 |------|------|
+| AntiGravity | Supported |
 | Claude Code | Supported |
-| Codex | Supported |
-
-Other AI tools (Gemini CLI, Cursor, GitHub Copilot, Cline, etc.) are planned for future integration.
+| Cline | Supported |
+| CodeBuddy | Supported |
+| Codex CLI | Supported |
+| Cursor | Supported |
+| Factory | Supported |
+| Gemini CLI | Supported |
+| GitHub Copilot | Supported |
+| Hermes | Supported |
+| Kimi Code | Supported |
+| Kiro | Supported |
+| OpenCode | Supported |
+| Pi | Supported |
+| Qoder | Supported |
+| Qwen Code | Supported |
+| StepFun | Supported |
+| Trae | Supported |
+| WorkBuddy | Supported |
 
 ## Configuration
 

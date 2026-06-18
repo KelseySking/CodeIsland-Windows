@@ -6,7 +6,7 @@
 
 > 不切换窗口，就能实时看到 AI 编程代理在做什么。
 
-CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源项目 [CodeIsland](https://github.com/wxtsky/CodeIsland) 实现的 Windows 版本，以桌面 HUD 浮窗形式呈现。当前已适配 Claude Code 和 Codex，通过 Hook 机制监听实时事件，在屏幕顶部展示会话状态、权限审批、问答交互和最近任务细节。
+CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源项目 [CodeIsland](https://github.com/wxtsky/CodeIsland) 实现的 Windows 版本，以桌面 HUD 浮窗形式呈现。当前通过内置 CodeOrbit Runtime 支持多种 AI 编程工具，通过 Hook 机制监听实时事件，在屏幕顶部展示会话状态、权限审批、问答交互和最近任务细节。
 
 项目仓库：https://github.com/KelseySking/CodeIsland-Windows
 
@@ -26,13 +26,13 @@ CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源�
 
 ## 功能特性
 
-- **AI 代理实时监控** — 已端到端适配 Claude Code 和 Codex；Gemini CLI、Cursor、GitHub Copilot、Cline 等其他工具属于后续适配计划
+- **AI 代理实时监控** — 通过 CodeOrbit Runtime 的工具插件支持多种 AI 编程工具
 - **桌面 HUD 浮窗** — 顶部/侧边/底部悬浮展示，折叠与展开自动切换，不抢焦点
 - **会话列表与详情** — 实时查看运行状态、当前工具、最近消息、完成摘要和任务详情
 - **权限审批** — 直接在面板上批准或拒绝工具权限请求，支持全局快捷键操作
 - **问答交互** — 在面板上回答 AI 工具的提问，无需切换回终端窗口
 - **终端跳转** — 一键跳转到对应终端标签页，支持 Windows Terminal 标签级精确切换
-- **Hook 自动安装** — 从设置界面为 Claude Code 和 Codex 安装或卸载 CodeIsland Hook
+- **Hook 自动安装** — 从设置界面连接或断开支持的 AI 编程工具
 - **Webhook 转发** — 可将关键通知异步投递到自定义 HTTP(S) 地址
 - **8-bit 音效** — 会话启动、完成、审批等事件的像素风音效
 - **全局快捷键** — 默认 `Ctrl+Alt+I` 切换面板、`Ctrl+Alt+Y` 批准、`Ctrl+Alt+N` 拒绝
@@ -113,14 +113,29 @@ dotnet run --project src/CodeIsland.WpfApp
 
 ## Hook 安装
 
-通过设置界面的 Hooks 标签页可一键安装/卸载 Claude Code 和 Codex Hook。
+打开**设置 > 工具连接**，即可一键连接或断开支持的工具。工具列表由内置 CodeOrbit Runtime 插件提供，后续 Runtime 更新可以新增或更新工具集成，而不需要修改展示客户端。
 
 | 工具 | 状态 |
 |------|------|
+| AntiGravity | 已适配 |
 | Claude Code | 已适配 |
-| Codex | 已适配 |
-
-Gemini CLI、Cursor、GitHub Copilot、Cline 等其他工具属于后续适配计划。
+| Cline | 已适配 |
+| CodeBuddy | 已适配 |
+| Codex CLI | 已适配 |
+| Cursor | 已适配 |
+| Factory | 已适配 |
+| Gemini CLI | 已适配 |
+| GitHub Copilot | 已适配 |
+| Hermes | 已适配 |
+| Kimi Code | 已适配 |
+| Kiro | 已适配 |
+| OpenCode | 已适配 |
+| Pi | 已适配 |
+| Qoder | 已适配 |
+| Qwen Code | 已适配 |
+| StepFun | 已适配 |
+| Trae | 已适配 |
+| WorkBuddy | 已适配 |
 
 ## 配置
 
