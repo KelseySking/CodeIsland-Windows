@@ -22,6 +22,10 @@ Project repository: https://github.com/KelseySking/CodeIsland-Windows
   <img src="imgs/hud-expanded.png" alt="Expanded HUD screenshot" width="760" />
 </p>
 
+<p align="center">
+  <img src="imgs/Approval.png" alt="Expanded HUD screenshot" width="760" />
+</p>
+
 ## Features
 
 - **Real-time agent monitoring** — Claude Code and Codex supported end-to-end; other AI tools planned for future integration

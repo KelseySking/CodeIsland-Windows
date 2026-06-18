@@ -20,6 +20,10 @@ CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源�
   <img src="imgs/hud-expanded.png" alt="展开 HUD 截图" width="760" />
 </p>
 
+<p align="center">
+  <img src="imgs/Approval.png" alt="Expanded HUD screenshot" width="760" />
+</p>
+
 ## 功能特性
 
 - **AI 代理实时监控** — 已端到端适配 Claude Code 和 Codex；Gemini CLI、Cursor、GitHub Copilot、Cline 等其他工具属于后续适配计划
