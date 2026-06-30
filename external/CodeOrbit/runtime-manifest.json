@@ -7,8 +7,8 @@
   "bridgeExe": "codeorbit-bridge.exe",
   "defaultPort": 32145,
   "defaultHost": "127.0.0.1",
-  "buildDate": "2026-06-29T02:02:29Z",
-  "build_date": "2026-06-29T02:02:29Z",
+  "buildDate": "2026-06-30T03:44:28Z",
+  "build_date": "2026-06-30T03:44:28Z",
   "default_port": 32145,
   "plugin_dirs": [
     "bundled-plugins"
