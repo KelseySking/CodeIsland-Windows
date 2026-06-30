@@ -47,7 +47,7 @@
         </StackPanel>
       </Border>
 
-      <TabControl x:Name="SettingsTabs" Grid.Row="3" Background="Transparent" BorderThickness="0" Foreground="{StaticResource HudTextBrush}" SelectionChanged="SettingsTabs_SelectionChanged">
+      <TabControl x:Name="SettingsTabs" Grid.Row="3" Background="Transparent" BorderThickness="0" Foreground="{StaticResource HudTextBrush}">
         <TabItem Header="通用">
           <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12,8,0">
             <StackPanel>
@@ -420,10 +420,8 @@
 
                 <Border Style="{StaticResource SettingsCardStyle}">
                   <StackPanel>
-                    <TextBlock Text="版本检测" Style="{StaticResource SettingsLabelStyle}" HorizontalAlignment="Center" />
-                    <TextBlock Text="{Binding UpdateCheckStatus}" FontSize="12" Foreground="#D9FFFFFF" HorizontalAlignment="Center" Margin="0,8,0,0" />
-                    <TextBlock Text="{Binding LatestVersion}" FontSize="16" FontWeight="Medium" Foreground="{StaticResource HudAccentBrush}" HorizontalAlignment="Center" Margin="0,8,0,12" />
-                    <Button Content="查看 GitHub 发布" Click="OpenGitHubReleases_Click" HorizontalAlignment="Center" Padding="20,8" />
+                    <TextBlock Text="版本发布" Style="{StaticResource SettingsLabelStyle}" HorizontalAlignment="Center" />
+                    <Button Content="查看 GitHub 发布" Click="OpenGitHubReleases_Click" HorizontalAlignment="Center" Padding="20,8" Margin="0,12,0,0" />
                   </StackPanel>
                 </Border>
               </StackPanel>

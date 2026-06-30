@@ -1,11 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
-using System.Net.Http;
-using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Media;
 using CodeIsland.Contracts;
 using CodeIsland.WpfApp.Services;
@@ -15,9 +12,7 @@ namespace CodeIsland.WpfApp.Views;
 
 public partial class SettingsWindow : Window, INotifyPropertyChanged
 {
-    private const string UpdateManifestUrl = "https://raw.githubusercontent.com/KelseySking/CodeOrbit/main/update-manifest.json";
-    private const string GitHubReleasesUrl = "https://github.com/KelseySking/CodeOrbit/releases";
-    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private const string GitHubReleasesUrl = "https://github.com/KelseySking/CodeOrbit-Rust/releases";
 
     private readonly SettingsManager _settings;
     private readonly IWpfSourceService _sourceService;
@@ -47,11 +42,9 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     // 工具列表
     private bool _sourcesLoaded;
 
-    // CodeOrbit 版本检测
+    // CodeOrbit 版本信息
     private string _runtimeProduct = "";
     private string _currentVersion = "";
-    private string _latestVersion = "";
-    private string _updateCheckStatus = "";
 
     public SettingsWindow(SettingsManager settings, IWpfSourceService? sourceService = null)
     {
@@ -156,28 +149,6 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         {
             if (string.Equals(_currentVersion, value, StringComparison.Ordinal)) return;
             _currentVersion = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public string LatestVersion
-    {
-        get => _latestVersion;
-        set
-        {
-            if (string.Equals(_latestVersion, value, StringComparison.Ordinal)) return;
-            _latestVersion = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public string UpdateCheckStatus
-    {
-        get => _updateCheckStatus;
-        set
-        {
-            if (string.Equals(_updateCheckStatus, value, StringComparison.Ordinal)) return;
-            _updateCheckStatus = value;
             OnPropertyChanged();
         }
     }
@@ -614,19 +585,6 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         return $"{displayName} {operationText}失败";
     }
 
-    private void SettingsTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (SettingsTabs.SelectedIndex == GetCodeOrbitTabIndex())
-        {
-            _ = CheckForUpdatesAsync();
-        }
-    }
-
-    private int GetCodeOrbitTabIndex()
-    {
-        return SettingsTabs.Items.Count - 1;
-    }
-
     private void OpenGitHubReleases_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -642,72 +600,4 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             FeedbackText = "无法打开浏览器，请手动访问 GitHub Releases";
         }
     }
-
-    private async Task CheckForUpdatesAsync()
-    {
-        if (string.IsNullOrEmpty(CurrentVersion))
-            return;
-
-        UpdateCheckStatus = "检测更新中...";
-
-        try
-        {
-            var manifest = await FetchUpdateManifestAsync().ConfigureAwait(false);
-            if (manifest == null)
-            {
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    UpdateCheckStatus = "检测失败，请稍后重试";
-                });
-                return;
-            }
-
-            await Dispatcher.InvokeAsync(() =>
-            {
-                LatestVersion = manifest.RuntimeVersion;
-                var comparison = CompareVersions(CurrentVersion, manifest.RuntimeVersion);
-                UpdateCheckStatus = comparison switch
-                {
-                    < 0 => $"有新版本可用：v{manifest.RuntimeVersion}",
-                    0 => "已是最新版本",
-                    > 0 => "当前版本较新（开发版本）"
-                };
-            });
-        }
-        catch (TaskCanceledException)
-        {
-            await Dispatcher.InvokeAsync(() =>
-            {
-                UpdateCheckStatus = "检测超时，请稍后重试";
-            });
-        }
-        catch
-        {
-            await Dispatcher.InvokeAsync(() =>
-            {
-                UpdateCheckStatus = "检测失败，请稍后重试";
-            });
-        }
-    }
-
-    private static async Task<UpdateManifest?> FetchUpdateManifestAsync()
-    {
-        try
-        {
-            return await HttpClient.GetFromJsonAsync<UpdateManifest>(UpdateManifestUrl).ConfigureAwait(false);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static int CompareVersions(string current, string latest)
-    {
-        if (!Version.TryParse(current, out var v1) || !Version.TryParse(latest, out var v2))
-            return 0;
-        return v1.CompareTo(v2);
-    }
-
-    private sealed record UpdateManifest(string RuntimeVersion, string ContractVersion, string DownloadUrl, string Sha256);
 }
