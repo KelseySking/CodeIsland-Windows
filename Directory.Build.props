@@ -1,9 +1,10 @@
 <Project>
   <PropertyGroup>
-    <Version>1.0.1</Version>
-    <AssemblyVersion>1.0.1.0</AssemblyVersion>
-    <FileVersion>1.0.1.0</FileVersion>
-    <InformationalVersion>1.0.1</InformationalVersion>
+    <CodeIslandVersion>1.1.2</CodeIslandVersion>
+    <Version>$(CodeIslandVersion)</Version>
+    <AssemblyVersion>$(CodeIslandVersion).0</AssemblyVersion>
+    <FileVersion>$(CodeIslandVersion).0</FileVersion>
+    <InformationalVersion>$(CodeIslandVersion)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 </Project>
