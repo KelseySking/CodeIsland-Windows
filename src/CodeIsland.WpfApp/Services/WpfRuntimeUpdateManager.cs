@@ -131,8 +131,7 @@ public static class WpfRuntimeUpdateManager
             }
 
             ZipFile.ExtractToDirectory(zipPath, extractPath);
-            var hostPath = Directory.EnumerateFiles(extractPath, "CodeIsland.RuntimeHost.exe", SearchOption.AllDirectories)
-                .FirstOrDefault();
+            var hostPath = FindRuntimeHostPath(extractPath);
             if (hostPath == null)
             {
                 logger.Write("WpfRuntimeUpdate", "host-missing", new Dictionary<string, string?>
@@ -159,6 +158,31 @@ public static class WpfRuntimeUpdateManager
                 ["exception"] = ex.GetType().Name
             });
         }
+    }
+
+    private static string? FindRuntimeHostPath(string extractPath)
+    {
+        var manifestPath = Directory.EnumerateFiles(extractPath, "runtime-manifest.json", SearchOption.AllDirectories)
+            .FirstOrDefault();
+        if (manifestPath == null)
+            return null;
+
+        try
+        {
+            var manifest = JsonSerializer.Deserialize<WpfRuntimeManifest>(File.ReadAllText(manifestPath), JsonOptions);
+            var manifestDir = Path.GetDirectoryName(manifestPath);
+            if (!string.IsNullOrWhiteSpace(manifest?.HostExe) && !string.IsNullOrWhiteSpace(manifestDir))
+            {
+                var manifestHostPath = Path.Combine(manifestDir, manifest.HostExe);
+                if (File.Exists(manifestHostPath))
+                    return manifestHostPath;
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
     }
 
     private static void Promote(string payloadDir)

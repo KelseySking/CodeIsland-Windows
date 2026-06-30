@@ -1,0 +1,31 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "cline",
+    "display_name": "Cline",
+    "icon_name": "cline",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["cline"],
+    "path_patterns": ["*cline*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "cline",
+    "config_path": "%USERPROFILE%/Documents/Cline/Hooks",
+    "events": [
+      "SessionStart",
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PostToolUse",
+      "Stop"
+    ],
+    "timeout_seconds": 10
+  },
+  "event_mappings": {
+    "TaskStart": "SessionStart",
+    "TaskResume": "UserPromptSubmit",
+    "TaskComplete": "Stop"
+  }
+}

@@ -1,7 +1,11 @@
 #define AppName "CodeIsland-Windows"
 #define MainExeName "CodeIsland-Windows.exe"
-#define BridgeExeName "CodeIsland.Bridge.exe"
-#define RuntimeHostExeName "CodeIsland.RuntimeHost.exe"
+#define BridgeExeName "codeorbit-bridge.exe"
+#define RuntimeHostExeName "codeorbit-host.exe"
+#define LegacyBridgeExeName "CodeIsland.Bridge.exe"
+#define LegacyRuntimeHostExeName "CodeIsland.RuntimeHost.exe"
+#define LegacyCodeOrbitBridgeExeName "CodeOrbit.Bridge.exe"
+#define LegacyCodeOrbitRuntimeHostExeName "CodeOrbit.RuntimeHost.exe"
 #define AppGuid "B8A0E8F8-36A9-44B9-BD1A-E81EBC8E58C9"
 #define AppIdValue "{{B8A0E8F8-36A9-44B9-BD1A-E81EBC8E58C9}"
 #define UninstallRegKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{" + AppGuid + "}_is1"
@@ -37,7 +41,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartApplications=no
-CloseApplicationsFilter={#MainExeName},{#BridgeExeName},{#RuntimeHostExeName}
+CloseApplicationsFilter={#MainExeName},{#BridgeExeName},{#RuntimeHostExeName},{#LegacyBridgeExeName},{#LegacyRuntimeHostExeName},{#LegacyCodeOrbitBridgeExeName},{#LegacyCodeOrbitRuntimeHostExeName}
 UninstallDisplayName={#AppName}
 
 [Languages]
@@ -61,6 +65,10 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 Type: files; Name: "{app}\{#MainExeName}"
 Type: files; Name: "{app}\{#BridgeExeName}"
 Type: files; Name: "{app}\{#RuntimeHostExeName}"
+Type: files; Name: "{app}\{#LegacyBridgeExeName}"
+Type: files; Name: "{app}\{#LegacyRuntimeHostExeName}"
+Type: files; Name: "{app}\{#LegacyCodeOrbitBridgeExeName}"
+Type: files; Name: "{app}\{#LegacyCodeOrbitRuntimeHostExeName}"
 Type: files; Name: "{app}\CodeIsland-Windows.pdb"
 Type: files; Name: "{app}\CodeIsland.Bridge.pdb"
 Type: files; Name: "{app}\CodeIsland.Core.pdb"
@@ -109,6 +117,14 @@ begin
     Result := CloseProcess('{#BridgeExeName}', ErrorMessage);
   if Result then
     Result := CloseProcess('{#RuntimeHostExeName}', ErrorMessage);
+  if Result then
+    Result := CloseProcess('{#LegacyBridgeExeName}', ErrorMessage);
+  if Result then
+    Result := CloseProcess('{#LegacyRuntimeHostExeName}', ErrorMessage);
+  if Result then
+    Result := CloseProcess('{#LegacyCodeOrbitBridgeExeName}', ErrorMessage);
+  if Result then
+    Result := CloseProcess('{#LegacyCodeOrbitRuntimeHostExeName}', ErrorMessage);
 end;
 
 function GetInstalledUninstaller(var Uninstaller: String): Boolean;

@@ -1,0 +1,16 @@
+{
+  "version": "0.1.0",
+  "runtimeVersion": "0.1.0",
+  "contractVersion": "1",
+  "target": "x86_64-pc-windows-msvc",
+  "hostExe": "codeorbit-host.exe",
+  "bridgeExe": "codeorbit-bridge.exe",
+  "defaultPort": 32145,
+  "defaultHost": "127.0.0.1",
+  "buildDate": "2026-06-29T02:02:29Z",
+  "build_date": "2026-06-29T02:02:29Z",
+  "default_port": 32145,
+  "plugin_dirs": [
+    "bundled-plugins"
+  ]
+}

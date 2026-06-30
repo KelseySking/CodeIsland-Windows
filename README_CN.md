@@ -96,7 +96,7 @@ dotnet build -c Release
 dotnet run --project src/CodeIsland.WpfApp
 ```
 
-启动后会显示 HUD 浮窗，并在托盘区创建 CodeIsland 图标。在 managed 模式下，应用会自动启动内嵌的 `CodeOrbit.RuntimeHost.exe`，通过 REST/WebSocket 连接 `http://127.0.0.1:32145`。
+启动后会显示 HUD 浮窗，并在托盘区创建 CodeIsland 图标。在 managed 模式下，应用会自动启动内嵌的 `codeorbit-host.exe`，通过 REST/WebSocket 连接 `http://127.0.0.1:32145`。
 
 ### 发布与打包
 

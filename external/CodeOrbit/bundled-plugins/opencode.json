@@ -1,0 +1,27 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "opencode",
+    "display_name": "OpenCode",
+    "icon_name": "opencode",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["opencode"],
+    "path_patterns": ["*opencode*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "nested",
+    "config_path": "~/.opencode/hooks.json",
+    "events": [
+      "PreToolUse",
+      "PostToolUse",
+      "UserPromptSubmit",
+      "SessionStart",
+      "SessionEnd",
+      "Stop"
+    ],
+    "timeout_seconds": 10
+  }
+}

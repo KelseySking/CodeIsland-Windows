@@ -1,0 +1,28 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "trae",
+    "display_name": "Trae",
+    "icon_name": "trae",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["trae", "trae-cli"],
+    "path_patterns": ["*trae*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "flat",
+    "config_path": "~/.trae/hooks.json",
+    "events": [
+      "PreToolUse",
+      "PostToolUse",
+      "UserPromptSubmit",
+      "SessionStart",
+      "SessionEnd",
+      "Stop",
+      "Notification"
+    ],
+    "timeout_seconds": 10
+  }
+}

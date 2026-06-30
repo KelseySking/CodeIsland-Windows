@@ -1,0 +1,27 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "hermes",
+    "display_name": "Hermes",
+    "icon_name": "hermes",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["hermes"],
+    "path_patterns": ["*hermes*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "nested",
+    "config_path": "~/.hermes/hooks.json",
+    "events": [
+      "PreToolUse",
+      "PostToolUse",
+      "UserPromptSubmit",
+      "SessionStart",
+      "SessionEnd",
+      "Stop"
+    ],
+    "timeout_seconds": 10
+  }
+}

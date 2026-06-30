@@ -60,7 +60,7 @@ $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Pa
 $publishScript = Join-Path $projectRoot "scripts\publish-single-file.ps1"
 $installerScript = Join-Path $projectRoot "installer\CodeIsland-Windows.iss"
 $setupIconFile = Join-Path $projectRoot "src\CodeIsland.WpfApp\Assets\app.ico"
-$bundledRuntimeDir = Join-Path $projectRoot "external\CodeOrbit-Runtime"
+$bundledRuntimeDir = Join-Path $projectRoot "external\CodeOrbit"
 
 if (-not (Test-Path -LiteralPath $installerScript)) {
     throw "Installer script not found: $installerScript"
@@ -91,10 +91,28 @@ if (-not (Test-Path $appExe)) {
     throw "App executable not found: $appExe"
 }
 
+$runtimeManifestPath = Join-Path $bundledRuntimeDir "runtime-manifest.json"
+if (-not (Test-Path -LiteralPath $runtimeManifestPath)) {
+    throw "Missing required Runtime file: runtime-manifest.json in $bundledRuntimeDir"
+}
+
+try {
+    $runtimeManifest = Get-Content -LiteralPath $runtimeManifestPath -Raw | ConvertFrom-Json
+}
+catch {
+    throw "Runtime manifest is invalid JSON: $runtimeManifestPath"
+}
+
+$runtimeHostExe = [string]$runtimeManifest.hostExe
+$runtimeBridgeExe = [string]$runtimeManifest.bridgeExe
+if ([string]::IsNullOrWhiteSpace($runtimeHostExe) -or [string]::IsNullOrWhiteSpace($runtimeBridgeExe)) {
+    throw "Runtime manifest must declare hostExe and bridgeExe: $runtimeManifestPath"
+}
+
 # Verify bundled Runtime files
 $requiredRuntimeFiles = @(
-    "CodeOrbit.RuntimeHost.exe",
-    "CodeOrbit.Bridge.exe",
+    $runtimeHostExe,
+    $runtimeBridgeExe,
     "runtime-manifest.json"
 )
 foreach ($file in $requiredRuntimeFiles) {
@@ -148,8 +166,8 @@ try {
     Write-Host ""
     Write-Host "Installer contents:" -ForegroundColor Cyan
     Write-Host "  - CodeIsland-Windows.exe (WPF Display Client)" -ForegroundColor Gray
-    Write-Host "  - runtime/current/CodeOrbit.RuntimeHost.exe" -ForegroundColor Gray
-    Write-Host "  - runtime/current/CodeOrbit.Bridge.exe" -ForegroundColor Gray
+    Write-Host "  - runtime/current/$runtimeHostExe" -ForegroundColor Gray
+    Write-Host "  - runtime/current/$runtimeBridgeExe" -ForegroundColor Gray
     Write-Host "  - runtime/current/runtime-manifest.json" -ForegroundColor Gray
     Write-Host "  - runtime/current/bundled-plugins/" -ForegroundColor Gray
 }

@@ -1,0 +1,28 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "copilot",
+    "display_name": "GitHub Copilot",
+    "icon_name": "copilot",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["copilot", "github-copilot-cli"],
+    "path_patterns": ["*copilot*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "copilot",
+    "config_path": "~/.copilot/hooks/hooks.json",
+    "events": [
+      "PreToolUse",
+      "PostToolUse",
+      "UserPromptSubmit",
+      "SessionStart",
+      "SessionEnd",
+      "Stop",
+      "Notification"
+    ],
+    "timeout_seconds": 10
+  }
+}

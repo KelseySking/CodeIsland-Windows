@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $appPublish = Join-Path $projectRoot "src\CodeIsland.WpfApp\bin\Release\net8.0-windows\$Runtime\publish"
-$bundledRuntimeDir = Join-Path $projectRoot "external\CodeOrbit-Runtime"
+$bundledRuntimeDir = Join-Path $projectRoot "external\CodeOrbit"
 
 # Check WpfApp publish
 if (-not (Test-Path $appPublish)) {
@@ -20,14 +20,35 @@ if (-not (Test-Path $appPublish)) {
 # Check bundled Runtime
 if (-not (Test-Path $bundledRuntimeDir)) {
     Write-Host "Bundled CodeOrbit Runtime not found: $bundledRuntimeDir" -ForegroundColor Red
-    Write-Host "The external/CodeOrbit-Runtime directory should contain Runtime files." -ForegroundColor Yellow
+    Write-Host "The external/CodeOrbit directory should contain Runtime files." -ForegroundColor Yellow
+    exit 1
+}
+
+$runtimeManifestPath = Join-Path $bundledRuntimeDir "runtime-manifest.json"
+if (-not (Test-Path -LiteralPath $runtimeManifestPath)) {
+    Write-Host "Missing required Runtime file: runtime-manifest.json in $bundledRuntimeDir" -ForegroundColor Red
+    exit 1
+}
+
+try {
+    $runtimeManifest = Get-Content -LiteralPath $runtimeManifestPath -Raw | ConvertFrom-Json
+}
+catch {
+    Write-Host "Runtime manifest is invalid JSON: $runtimeManifestPath" -ForegroundColor Red
+    exit 1
+}
+
+$runtimeHostExe = [string]$runtimeManifest.hostExe
+$runtimeBridgeExe = [string]$runtimeManifest.bridgeExe
+if ([string]::IsNullOrWhiteSpace($runtimeHostExe) -or [string]::IsNullOrWhiteSpace($runtimeBridgeExe)) {
+    Write-Host "Runtime manifest must declare hostExe and bridgeExe: $runtimeManifestPath" -ForegroundColor Red
     exit 1
 }
 
 # Verify Runtime files
 $requiredRuntimeFiles = @(
-    "CodeOrbit.RuntimeHost.exe",
-    "CodeOrbit.Bridge.exe",
+    $runtimeHostExe,
+    $runtimeBridgeExe,
     "runtime-manifest.json"
 )
 foreach ($file in $requiredRuntimeFiles) {
@@ -79,8 +100,7 @@ Write-Host "Release ZIP created: $zipPath" -ForegroundColor Green
 Write-Host ""
 Write-Host "Package contents:" -ForegroundColor Cyan
 Write-Host "  - CodeIsland-Windows.exe (WPF Display Client)" -ForegroundColor Gray
-Write-Host "  - runtime/current/CodeOrbit.RuntimeHost.exe" -ForegroundColor Gray
-Write-Host "  - runtime/current/CodeOrbit.Bridge.exe" -ForegroundColor Gray
+Write-Host "  - runtime/current/$runtimeHostExe" -ForegroundColor Gray
+Write-Host "  - runtime/current/$runtimeBridgeExe" -ForegroundColor Gray
 Write-Host "  - runtime/current/runtime-manifest.json" -ForegroundColor Gray
 Write-Host "  - runtime/current/bundled-plugins/" -ForegroundColor Gray
-

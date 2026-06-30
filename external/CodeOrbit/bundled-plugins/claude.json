@@ -1,0 +1,36 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "claude",
+    "display_name": "Claude Code",
+    "icon_name": "claude",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["claude", "claude-code"],
+    "env_var_hints": {
+      "CLAUDE_CLI": "*"
+    },
+    "path_patterns": ["*claude*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "claude-matcher",
+    "config_path": "~/.claude/settings.json",
+    "events": [
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PostToolUse",
+      "PostToolUseFailure",
+      "PermissionRequest",
+      "Stop",
+      "SubagentStart",
+      "SubagentStop",
+      "SessionStart",
+      "SessionEnd",
+      "Notification",
+      "PreCompact"
+    ],
+    "timeout_seconds": 120
+  }
+}

@@ -10,6 +10,7 @@ public sealed class WpfRuntimeProcessManager : IDisposable
 {
     public const string ManagedMode = "managed";
     public const string ExternalMode = "external";
+    private static readonly JsonSerializerOptions RuntimeManifestJsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan HealthTimeout = TimeSpan.FromSeconds(8);
     private readonly SettingsManager _settings;
     private readonly EventLogger _logger;
@@ -132,6 +133,19 @@ public sealed class WpfRuntimeProcessManager : IDisposable
     private static IEnumerable<string> EnumerateRuntimeHostCandidates()
     {
         var baseDir = AppContext.BaseDirectory;
+        foreach (var manifestPath in EnumerateManifestCandidates())
+        {
+            var manifest = ReadManifestFile(manifestPath);
+            var manifestDir = Path.GetDirectoryName(manifestPath);
+            if (!string.IsNullOrWhiteSpace(manifest?.HostExe) && !string.IsNullOrWhiteSpace(manifestDir))
+                yield return Path.Combine(manifestDir, manifest.HostExe);
+        }
+
+        yield return Path.Combine(WpfRuntimeUpdateManager.CurrentRuntimeDirectory, "codeorbit-host.exe");
+        yield return Path.Combine(baseDir, "runtime", "current", "codeorbit-host.exe");
+        yield return Path.Combine(baseDir, "runtime", "codeorbit-host.exe");
+        yield return Path.Combine(baseDir, "codeorbit-host.exe");
+
         yield return Path.Combine(WpfRuntimeUpdateManager.CurrentRuntimeDirectory, "CodeOrbit.RuntimeHost.exe");
         yield return Path.Combine(baseDir, "runtime", "current", "CodeOrbit.RuntimeHost.exe");
         yield return Path.Combine(baseDir, "runtime", "CodeOrbit.RuntimeHost.exe");
@@ -146,6 +160,8 @@ public sealed class WpfRuntimeProcessManager : IDisposable
         var current = new DirectoryInfo(baseDir);
         while (current != null)
         {
+            yield return Path.Combine(current.FullName, "external", "CodeOrbit", "codeorbit-host.exe");
+            yield return Path.Combine(current.FullName, "..", "CodeOrbit", "codeorbit-host.exe");
             yield return Path.Combine(current.FullName, "..", "CodeOrbit", "src", "CodeOrbit.RuntimeHost", "bin", "Debug", "net8.0", "CodeOrbit.RuntimeHost.exe");
             yield return Path.Combine(current.FullName, "..", "CodeOrbit", "src", "CodeOrbit.RuntimeHost", "bin", "Release", "net8.0", "CodeOrbit.RuntimeHost.exe");
             current = current.Parent;
@@ -156,20 +172,27 @@ public sealed class WpfRuntimeProcessManager : IDisposable
     {
         foreach (var path in EnumerateManifestCandidates())
         {
-            if (!File.Exists(path))
-                continue;
-
-            try
-            {
-                return JsonSerializer.Deserialize<WpfRuntimeManifest>(File.ReadAllText(path), new JsonSerializerOptions(JsonSerializerDefaults.Web));
-            }
-            catch
-            {
-                return null;
-            }
+            var manifest = ReadManifestFile(path);
+            if (manifest != null)
+                return manifest;
         }
 
         return null;
+    }
+
+    private static WpfRuntimeManifest? ReadManifestFile(string path)
+    {
+        if (!File.Exists(path))
+            return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<WpfRuntimeManifest>(File.ReadAllText(path), RuntimeManifestJsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static IEnumerable<string> EnumerateManifestCandidates()
@@ -178,6 +201,14 @@ public sealed class WpfRuntimeProcessManager : IDisposable
         yield return Path.Combine(WpfRuntimeUpdateManager.CurrentRuntimeDirectory, "runtime-manifest.json");
         yield return Path.Combine(baseDir, "runtime", "current", "runtime-manifest.json");
         yield return Path.Combine(baseDir, "runtime", "runtime-manifest.json");
+
+        var current = new DirectoryInfo(baseDir);
+        while (current != null)
+        {
+            yield return Path.Combine(current.FullName, "external", "CodeOrbit", "runtime-manifest.json");
+            yield return Path.Combine(current.FullName, "..", "CodeOrbit", "runtime-manifest.json");
+            current = current.Parent;
+        }
     }
 
     public void Dispose()

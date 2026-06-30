@@ -98,7 +98,7 @@ dotnet build -c Release
 dotnet run --project src/CodeIsland.WpfApp
 ```
 
-After startup, the HUD floating window is shown and a CodeIsland icon appears in the system tray. In managed mode, the app automatically starts the bundled `CodeOrbit.RuntimeHost.exe` and connects to `http://127.0.0.1:32145` via REST/WebSocket.
+After startup, the HUD floating window is shown and a CodeIsland icon appears in the system tray. In managed mode, the app automatically starts the bundled `codeorbit-host.exe` and connects to `http://127.0.0.1:32145` via REST/WebSocket.
 
 ### Publish & Package
 

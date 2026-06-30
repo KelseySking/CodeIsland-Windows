@@ -1,0 +1,27 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "pi",
+    "display_name": "Pi",
+    "icon_name": "pi",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["pi", "pi-cli"],
+    "path_patterns": ["*pi-cli*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "nested",
+    "config_path": "~/.pi/hooks.json",
+    "events": [
+      "PreToolUse",
+      "PostToolUse",
+      "UserPromptSubmit",
+      "SessionStart",
+      "SessionEnd",
+      "Stop"
+    ],
+    "timeout_seconds": 10
+  }
+}

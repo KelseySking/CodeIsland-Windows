@@ -1,0 +1,37 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "codex",
+    "display_name": "Codex CLI",
+    "icon_name": "codex",
+    "permission_response_style": "codex"
+  },
+  "detection": {
+    "process_names": ["codex", "codex-cli"],
+    "env_var_hints": {
+      "CODEX_HOME": "*"
+    },
+    "path_patterns": ["*codex*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "codex",
+    "config_path": "~/.codex/hooks.json",
+    "events": [
+      "SessionStart",
+      "SessionEnd",
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PostToolUse",
+      "PermissionRequest",
+      "Stop"
+    ],
+    "timeout_seconds": 5,
+    "extra_config": {
+      "file": "~/.codex/config.toml",
+      "section": "[features]",
+      "key": "hooks",
+      "value": "true"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "2.0",
+  "source": {
+    "key": "qoder",
+    "display_name": "Qoder",
+    "icon_name": "qoder",
+    "permission_response_style": "claude-style"
+  },
+  "detection": {
+    "process_names": ["qoder", "qoder-cli"],
+    "path_patterns": ["*qoder*"],
+    "priority": 1000
+  },
+  "hook_installation": {
+    "format": "claude-matcher",
+    "config_path": "~/.qoder/settings.json",
+    "events": [
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PostToolUse",
+      "PostToolUseFailure",
+      "PermissionRequest",
+      "Stop",
+      "SubagentStart",
+      "SubagentStop",
+      "SessionStart",
+      "SessionEnd",
+      "Notification",
+      "PreCompact"
+    ],
+    "timeout_seconds": 120
+  }
+}

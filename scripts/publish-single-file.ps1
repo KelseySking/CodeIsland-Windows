@@ -1,6 +1,6 @@
 # CodeIsland - 发布单文件可执行程序
 # 注意: 本脚本现在只发布 WpfApp
-# CodeOrbit Runtime (Bridge + RuntimeHost) 需要从独立仓库获取
+# CodeOrbit Runtime (host + bridge) 需要从 external\CodeOrbit 获取
 param(
     [string]$Runtime = "win-x64"
 )
@@ -49,7 +49,5 @@ Assert-PublishFiles -PublishDir $appPublish -ArtifactName "CodeIsland-Windows" -
 Write-Host ""
 Write-Host "Done. WpfApp output in: $appPublish" -ForegroundColor Green
 Write-Host ""
-Write-Host "Note: CodeOrbit Runtime (Bridge + RuntimeHost) must be obtained separately from:" -ForegroundColor Yellow
-Write-Host "  https://github.com/KelseySking/CodeOrbit" -ForegroundColor Cyan
-Write-Host "  or D:\OtherWork\CodeOrbit\release\CodeOrbit-win-x64-v*.zip" -ForegroundColor Cyan
-
+Write-Host "Note: CodeOrbit Runtime (host + bridge) is bundled from:" -ForegroundColor Yellow
+Write-Host "  external\CodeOrbit" -ForegroundColor Cyan
