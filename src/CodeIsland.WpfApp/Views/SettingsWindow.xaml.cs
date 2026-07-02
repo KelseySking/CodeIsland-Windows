@@ -17,6 +17,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private readonly SettingsManager _settings;
     private readonly IWpfSourceService _sourceService;
     private bool _autoApproveSafeTools;
+    private bool _autoApproveAllPermissions;
     private bool _hideWhenFullscreen;
     private bool _launchAtLogin;
     private string _displayPosition = WpfHudDisplayPosition.Default;
@@ -52,6 +53,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _settings = settings;
         _sourceService = sourceService ?? new UnavailableWpfSourceService();
         _autoApproveSafeTools = _settings.Get("auto_approve_safe_tools", false);
+        _autoApproveAllPermissions = _settings.Get(SettingsManager.AutoApproveAllPermissionsKey, false);
         _hideWhenFullscreen = _settings.Get("hide_when_fullscreen", true);
         _launchAtLogin = WpfStartupManager.IsEnabled();
         _displayPosition = ReadDisplayPosition();
@@ -163,6 +165,19 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             OnPropertyChanged();
             _settings.Set("auto_approve_safe_tools", value);
             FeedbackText = value ? "安全只读工具自动审批已开启" : "安全只读工具自动审批已关闭";
+        }
+    }
+
+    public bool AutoApproveAllPermissions
+    {
+        get => _autoApproveAllPermissions;
+        set
+        {
+            if (_autoApproveAllPermissions == value) return;
+            _autoApproveAllPermissions = value;
+            OnPropertyChanged();
+            _settings.Set(SettingsManager.AutoApproveAllPermissionsKey, value);
+            FeedbackText = value ? "一键通过审批已开启，问答仍需手动处理" : "一键通过审批已关闭";
         }
     }
 

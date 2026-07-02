@@ -5,6 +5,8 @@ namespace CodeIsland.WpfApp.Services;
 
 public sealed class SettingsManager
 {
+    public const string AutoApproveAllPermissionsKey = "auto_approve_all_permissions";
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly string _settingsPath;
     private Dictionary<string, JsonElement> _settings;

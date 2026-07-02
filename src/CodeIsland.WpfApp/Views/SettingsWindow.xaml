@@ -132,6 +132,20 @@
                 <Grid>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="一键通过审批（问答除外）" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="开启后自动允许所有权限审批，问答仍需手动回答。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <CheckBox Grid.Column="1" IsChecked="{Binding AutoApproveAllPermissions, Mode=TwoWay}" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="320" />
                   </Grid.ColumnDefinitions>
                   <StackPanel>

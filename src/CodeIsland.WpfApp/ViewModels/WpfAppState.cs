@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -37,6 +38,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private readonly HashSet<string> _removedHudSessionIds = new(StringComparer.Ordinal);
     private readonly Queue<PendingPermission> _permissionQueue = new();
     private readonly Queue<PendingQuestion> _questionQueue = new();
+    private readonly ConcurrentDictionary<string, byte> _autoApprovingPermissionIds = new(StringComparer.Ordinal);
     private WpfHudSurfaceKind _surfaceKind = WpfHudSurfaceKind.Collapsed;
     private string? _selectedSessionId;
     private string? _selectedHudItemId;
@@ -309,7 +311,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         }
         _selectedSessionId ??= _sessions.Keys.FirstOrDefault();
 
-        if (change.PendingActions.Count > 0)
+        if (HasPendingAction)
             ClearCompletionCardForPendingAction();
 
         if (!string.IsNullOrWhiteSpace(change.AffectedSessionId) &&
@@ -387,11 +389,18 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     {
         _permissionQueue.Clear();
         _questionQueue.Clear();
+        var autoApproveAllPermissions = _settings.Get(SettingsManager.AutoApproveAllPermissionsKey, false);
 
         foreach (var pending in pendingActions.OrderBy(static action => action.CreatedAt))
         {
             if (pending.Permission != null)
             {
+                if (autoApproveAllPermissions)
+                {
+                    QueueAutoApprovePermission(pending.ActionId);
+                    continue;
+                }
+
                 _permissionQueue.Enqueue(new PendingPermission(pending.ActionId, pending.CreatedAt, pending.Permission));
             }
             else if (pending.Question != null)
@@ -645,6 +654,42 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         _ = RunRuntimeCommandAsync(
             () => _runtimeClient.AllowPermissionAsync(pending.ActionId, always),
             AdvanceAfterPendingResponse);
+    }
+
+    private void ApproveAllPendingPermissionsIfEnabled()
+    {
+        if (!_settings.Get(SettingsManager.AutoApproveAllPermissionsKey, false))
+            return;
+
+        if (_permissionQueue.Count == 0)
+            return;
+
+        foreach (var pending in _permissionQueue.ToArray())
+            QueueAutoApprovePermission(pending.ActionId);
+
+        _permissionQueue.Clear();
+        AdvanceAfterPendingResponse();
+    }
+
+    private void QueueAutoApprovePermission(string actionId)
+    {
+        if (_autoApprovingPermissionIds.TryAdd(actionId, 0))
+            _ = AutoApprovePermissionAsync(actionId);
+    }
+
+    private async Task AutoApprovePermissionAsync(string actionId)
+    {
+        try
+        {
+            await _runtimeClient.AllowPermissionAsync(actionId, false);
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _autoApprovingPermissionIds.TryRemove(actionId, out _);
+        }
     }
 
     public void Deny()
@@ -1328,6 +1373,10 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             foreach (var item in _sessionItems.Values)
                 item.RefreshDisplay();
             RefreshAll();
+        }
+        else if (e.Key == SettingsManager.AutoApproveAllPermissionsKey)
+        {
+            ApproveAllPendingPermissionsIfEnabled();
         }
     }
 
