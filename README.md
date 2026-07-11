@@ -34,8 +34,9 @@ Project repository: https://github.com/KelseySking/CodeIsland-Windows
 - **Permission approvals** — Approve or deny tool permission requests directly from the panel, with global hotkey support
 - **Q&A interaction** — Answer questions from AI tools directly in the panel without switching back to the terminal window
 - **Terminal jump** — Jump to the corresponding terminal tab with one click, including precise Windows Terminal tab-level switching
-- **Automatic Hook installation** — Connect or disconnect supported tools from the settings UI
+- **Automatic Hook installation** — Connect or disconnect supported tools from the settings UI (Windows and WSL can be managed separately)
 - **Webhook forwarding** — Asynchronously deliver key notifications to a custom HTTP(S) endpoint
+
 - **8-bit sound effects** — Pixel-style sound effects for session start, completion, approval, and other events
 - **Global hotkeys** — Default hotkeys: `Ctrl+Alt+I` to toggle the panel, `Ctrl+Alt+Y` to approve, and `Ctrl+Alt+N` to deny
 - **Automatic updates** — Check for new versions through GitHub Releases
@@ -51,7 +52,8 @@ Project repository: https://github.com/KelseySking/CodeIsland-Windows
 
 ## Architecture
 
-CodeIsland for Windows is a pure **display client** (HUD). It connects to a bundled [CodeOrbit Runtime](https://github.com/wxtsky/CodeOrbit) via REST and WebSocket APIs. The Runtime handles Hook event reception, state aggregation, and session management; the WPF app only handles UI rendering and user interaction.
+CodeIsland for Windows is a pure **display client** (HUD). It connects to a bundled [CodeOrbit Runtime](https://github.com/KelseySking/CodeOrbit-Rust) via REST and WebSocket APIs. The Runtime handles Hook event reception, state aggregation, and session management; the WPF app only handles UI rendering and user interaction.
+
 
 ```text
 ┌──────────────────────┐         ┌─────────────────────────┐
@@ -102,22 +104,40 @@ After startup, the HUD floating window is shown and a CodeIsland icon appears in
 
 ### Publish & Package
 
+The bundled Runtime lives in `external/CodeOrbit`, pinned by `external/CodeOrbit/runtime-pin.json` (currently CodeOrbit-Rust **v0.1.2**, which includes WSL hook APIs).
+
 ```powershell
+# Sync Runtime from GitHub using the pin (reproducible by default)
+.\scripts\sync-codeorbit-runtime.ps1
+
+# Optional: sync latest release (updates pin)
+.\scripts\sync-codeorbit-runtime.ps1 -Latest
+
 # Single-file self-contained build
 .\scripts\publish-single-file.ps1
 
-# Release ZIP
+# Release ZIP (optional Runtime sync before packaging)
 .\scripts\create-release-zip.ps1
+.\scripts\create-release-zip.ps1 -SyncRuntime
 
 # Windows installer (requires Inno Setup 6)
 .\scripts\create-installer.ps1
+.\scripts\create-installer.ps1 -SyncRuntime
+# Force latest Runtime when packaging:
+# .\scripts\create-installer.ps1 -SyncRuntime -LatestRuntime
 ```
 
 ## Hook Installation
 
-Open **Settings > Tool Connections** to connect or disconnect supported tools with one click. The list is provided by the bundled CodeOrbit Runtime plugins, so new Runtime releases can add or update tool integrations without changing the display client.
+Open **Settings > Tool Connections** to connect or disconnect supported tools:
+
+- **Windows** — install/uninstall hooks in the current Windows user config
+- **WSL** (shown when distributions are detected) — pick a distro and manage WSL hooks separately; hooks call Windows `codeorbit-bridge.exe` via WSL interop and are independent of the Windows connection state
+
+The tool list comes from bundled CodeOrbit Runtime plugins. WSL distro/status loading runs in the background with timeouts so the settings page stays responsive. New Runtime releases can add or update tool integrations without changing the display client.
 
 | Tool | Status |
+
 |------|------|
 | AntiGravity | Supported |
 | Claude Code | Supported |

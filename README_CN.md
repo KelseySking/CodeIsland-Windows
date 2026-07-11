@@ -32,8 +32,9 @@ CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源�
 - **权限审批** — 直接在面板上批准或拒绝工具权限请求，支持全局快捷键操作
 - **问答交互** — 在面板上回答 AI 工具的提问，无需切换回终端窗口
 - **终端跳转** — 一键跳转到对应终端标签页，支持 Windows Terminal 标签级精确切换
-- **Hook 自动安装** — 从设置界面连接或断开支持的 AI 编程工具
+- **Hook 自动安装** — 从设置界面连接或断开支持的 AI 编程工具（Windows 与 WSL 可分别管理）
 - **Webhook 转发** — 可将关键通知异步投递到自定义 HTTP(S) 地址
+
 - **8-bit 音效** — 会话启动、完成、审批等事件的像素风音效
 - **全局快捷键** — 默认 `Ctrl+Alt+I` 切换面板、`Ctrl+Alt+Y` 批准、`Ctrl+Alt+N` 拒绝
 - **自动更新** — 通过 GitHub Releases 检查新版本
@@ -49,7 +50,8 @@ CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源�
 
 ## 架构
 
-CodeIsland for Windows 是一个纯**展示客户端**（HUD），通过 REST 和 WebSocket API 连接内嵌的 [CodeOrbit Runtime](https://github.com/wxtsky/CodeOrbit)。Runtime 负责 Hook 事件接收、状态聚合和会话管理；WPF 应用仅负责 UI 渲染和用户交互。
+CodeIsland for Windows 是一个纯**展示客户端**（HUD），通过 REST 和 WebSocket API 连接内嵌的 [CodeOrbit Runtime](https://github.com/KelseySking/CodeOrbit-Rust)。Runtime 负责 Hook 事件接收、状态聚合和会话管理；WPF 应用仅负责 UI 渲染和用户交互。
+
 
 ```text
 ┌──────────────────────┐         ┌─────────────────────────┐
@@ -100,22 +102,40 @@ dotnet run --project src/CodeIsland.WpfApp
 
 ### 发布与打包
 
+内嵌 Runtime 默认来自仓库中的 `external/CodeOrbit`，版本由 `external/CodeOrbit/runtime-pin.json` 钉死（当前为 CodeOrbit-Rust **v0.1.2**，含 WSL hook API）。
+
 ```powershell
+# 按 pin 从 GitHub 同步 Runtime（默认可复现）
+.\scripts\sync-codeorbit-runtime.ps1
+
+# 可选：同步最新 release（会写回 pin）
+.\scripts\sync-codeorbit-runtime.ps1 -Latest
+
 # 单文件自包含发布
 .\scripts\publish-single-file.ps1
 
-# 发布 ZIP
+# 发布 ZIP（可选打包前同步 Runtime）
 .\scripts\create-release-zip.ps1
+.\scripts\create-release-zip.ps1 -SyncRuntime
 
 # Windows 安装程序（需安装 Inno Setup 6）
 .\scripts\create-installer.ps1
+.\scripts\create-installer.ps1 -SyncRuntime
+# 强制最新 Runtime 再打包：
+# .\scripts\create-installer.ps1 -SyncRuntime -LatestRuntime
 ```
 
 ## Hook 安装
 
-打开**设置 > 工具连接**，即可一键连接或断开支持的工具。工具列表由内置 CodeOrbit Runtime 插件提供，后续 Runtime 更新可以新增或更新工具集成，而不需要修改展示客户端。
+打开**设置 > 工具连接**，即可连接或断开支持的工具：
+
+- **Windows**：在当前 Windows 用户配置中安装/卸载 hook
+- **WSL**（检测到发行版时显示）：选择发行版后单独安装/卸载 WSL 内 hook；hook 经 WSL interop 调用 Windows 侧 `codeorbit-bridge.exe`，与 Windows 连接状态相互独立
+
+工具列表由内置 CodeOrbit Runtime 插件提供。WSL 列表与状态在后台加载并带超时，避免阻塞设置页。后续 Runtime 更新可以新增或更新工具集成，而不需要修改展示客户端。
 
 | 工具 | 状态 |
+
 |------|------|
 | AntiGravity | 已适配 |
 | Claude Code | 已适配 |

@@ -12,6 +12,12 @@ public interface IWpfSourceService
     bool RepairAll();
     RuntimeAssetsDto GetRuntimeAssets();
     bool RepairRuntimeAssets();
+
+    WslDistrosDto ListWslDistros();
+    SourceStatusDto GetWslSourceStatus(string source, string? distro = null);
+    SourceOperationResultDto InstallWsl(string source, string? distro = null);
+    SourceOperationResultDto UninstallWsl(string source, string? distro = null);
+    SourceOperationResultDto RepairWsl(string source, string? distro = null);
 }
 
 public sealed class UnavailableWpfSourceService : IWpfSourceService
@@ -35,4 +41,19 @@ public sealed class UnavailableWpfSourceService : IWpfSourceService
     public RuntimeAssetsDto GetRuntimeAssets() => new("", "", "", Installed: false);
 
     public bool RepairRuntimeAssets() => false;
+
+    public WslDistrosDto ListWslDistros() =>
+        new([], "Runtime is not connected");
+
+    public SourceStatusDto GetWslSourceStatus(string source, string? distro = null) =>
+        new(source, Supported: false, Installed: false, DisplayName: source);
+
+    public SourceOperationResultDto InstallWsl(string source, string? distro = null) =>
+        new(source, Success: false, Installed: false, Message: "Runtime is not connected");
+
+    public SourceOperationResultDto UninstallWsl(string source, string? distro = null) =>
+        new(source, Success: false, Installed: false, Message: "Runtime is not connected");
+
+    public SourceOperationResultDto RepairWsl(string source, string? distro = null) =>
+        new(source, Success: false, Installed: false, Message: "Runtime is not connected");
 }

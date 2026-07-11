@@ -42,6 +42,15 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
     // 工具列表
     private bool _sourcesLoaded;
+    private bool _wslAvailable;
+    private bool _suppressWslDistroRefresh;
+    private string? _selectedWslDistro;
+    private ObservableCollection<string> _wslDistros = new();
+    private int _wslLoadGeneration;
+    private static readonly TimeSpan WslListTimeout = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan WslStatusTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan WslOperationTimeout = TimeSpan.FromSeconds(60);
+
 
     // CodeOrbit 版本信息
     private string _runtimeProduct = "";
@@ -69,6 +78,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _smartSoundSuppression = _settings.Get("smart_suppression", true);
         _showFullRecentMessages = _settings.Get("show_full_recent_messages", false);
         _volumePercent = Math.Clamp(_settings.Get("volume", 0.7), 0.0, 1.0) * 100.0;
+        _selectedWslDistro = _settings.Get("last_wsl_distro", (string?)null);
         DataContext = this;
         RefreshMonitorOptions();
 
@@ -79,6 +89,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _ = LoadSourcesAsync();
     }
 
+
     public event Func<string, string, string, bool>? HotkeysChangeRequested;
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -86,6 +97,35 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
     // 工具列表
     public ObservableCollection<SourceViewModel> Sources { get; } = new();
+
+    public ObservableCollection<string> WslDistros => _wslDistros;
+
+    public bool WslAvailable
+    {
+        get => _wslAvailable;
+        set
+        {
+            if (_wslAvailable == value) return;
+            _wslAvailable = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string? SelectedWslDistro
+    {
+        get => _selectedWslDistro;
+        set
+        {
+            if (_selectedWslDistro == value) return;
+            _selectedWslDistro = value;
+            OnPropertyChanged();
+            if (!string.IsNullOrWhiteSpace(value))
+                _settings.Set("last_wsl_distro", value);
+            if (!_suppressWslDistroRefresh)
+                _ = RefreshWslStatusesAsync();
+        }
+    }
+
 
     public bool SourcesLoaded
     {
@@ -97,6 +137,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             OnPropertyChanged();
         }
     }
+
 
     // Runtime 状态栏
     public string RuntimeConnectionStatus
@@ -538,27 +579,157 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
     private async Task LoadSourcesAsync()
     {
+        var loadGen = Interlocked.Increment(ref _wslLoadGeneration);
         try
         {
-            var sources = _sourceService.GetSources();
+            // Windows sources first — never block UI on WSL (wsl.exe can hang for seconds).
+            var sources = await Task.Run(() => _sourceService.GetSources()).ConfigureAwait(false);
+            if (loadGen != _wslLoadGeneration)
+                return;
+
             await Dispatcher.InvokeAsync(() =>
             {
                 Sources.Clear();
                 foreach (var dto in sources)
                 {
-                    Sources.Add(new SourceViewModel(dto));
+                    Sources.Add(new SourceViewModel(dto)
+                    {
+                        WslAvailable = false,
+                        WslInstalled = false,
+                        SelectedDistro = null
+                    });
                 }
                 SourcesLoaded = Sources.Count > 0;
+                WslAvailable = false;
             });
+
+            // Distro list only; per-source status is best-effort and timed out separately.
+            var distros = await RunWithTimeoutAsync(
+                () =>
+                {
+                    try
+                    {
+                        var wsl = _sourceService.ListWslDistros();
+                        return wsl.Distros?
+                            .Where(d => !string.IsNullOrWhiteSpace(d))
+                            .Select(d => d.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList() ?? [];
+                    }
+                    catch
+                    {
+                        return new List<string>();
+                    }
+                },
+                WslListTimeout,
+                []).ConfigureAwait(false);
+
+            if (loadGen != _wslLoadGeneration)
+                return;
+
+            string? selected = null;
+            if (distros.Count > 0)
+            {
+                selected = _selectedWslDistro;
+                if (string.IsNullOrWhiteSpace(selected) ||
+                    !distros.Contains(selected, StringComparer.OrdinalIgnoreCase))
+                {
+                    selected = distros[0];
+                }
+            }
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                _suppressWslDistroRefresh = true;
+                try
+                {
+                    _wslDistros.Clear();
+                    foreach (var d in distros)
+                        _wslDistros.Add(d);
+
+                    SelectedWslDistro = selected;
+                    WslAvailable = distros.Count > 0;
+                    foreach (var vm in Sources)
+                    {
+                        vm.WslAvailable = WslAvailable;
+                        vm.SelectedDistro = selected;
+                        // leave WslInstalled until background status refresh finishes
+                    }
+                }
+                finally
+                {
+                    _suppressWslDistroRefresh = false;
+                }
+            });
+
+            if (distros.Count > 0 && !string.IsNullOrWhiteSpace(selected))
+                await RefreshWslStatusesAsync(loadGen).ConfigureAwait(false);
         }
         catch
         {
+            if (loadGen != _wslLoadGeneration)
+                return;
             await Dispatcher.InvokeAsync(() =>
             {
                 SourcesLoaded = false;
+                WslAvailable = false;
                 FeedbackText = "工具列表加载失败：Runtime 未连接";
             });
         }
+    }
+
+    private async Task RefreshWslStatusesAsync(int? expectedGeneration = null)
+    {
+        string? distro = null;
+        List<string> ids = [];
+        await Dispatcher.InvokeAsync(() =>
+        {
+            if (!WslAvailable || string.IsNullOrWhiteSpace(SelectedWslDistro))
+                return;
+            distro = SelectedWslDistro;
+            ids = Sources.Select(s => s.Id).ToList();
+        });
+
+        if (string.IsNullOrWhiteSpace(distro) || ids.Count == 0)
+            return;
+        if (expectedGeneration is int gen && gen != _wslLoadGeneration)
+            return;
+
+        var statuses = await RunWithTimeoutAsync(
+            () =>
+            {
+                var map = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                foreach (var id in ids)
+                {
+                    try
+                    {
+                        map[id] = _sourceService.GetWslSourceStatus(id, distro).Installed;
+                    }
+                    catch
+                    {
+                        map[id] = false;
+                    }
+                }
+                return map;
+            },
+            WslStatusTimeout,
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)).ConfigureAwait(false);
+
+        if (expectedGeneration is int gen2 && gen2 != _wslLoadGeneration)
+            return;
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            if (!string.Equals(SelectedWslDistro, distro, StringComparison.OrdinalIgnoreCase))
+                return;
+            foreach (var vm in Sources)
+            {
+                vm.SelectedDistro = distro;
+                vm.WslAvailable = true;
+                if (statuses.TryGetValue(vm.Id, out var installed))
+                    vm.WslInstalled = installed;
+            }
+        });
     }
 
     private async void SourceToggle_Click(object sender, RoutedEventArgs e)
@@ -568,19 +739,21 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
         vm.IsOperating = true;
         var displayName = vm.DisplayName;
+        var wasInstalled = vm.Installed;
+        var sourceId = vm.Id;
 
         try
         {
-            var result = vm.Installed
-                ? _sourceService.Uninstall(vm.Id)
-                : _sourceService.Install(vm.Id);
+            var result = await Task.Run(() =>
+                wasInstalled
+                    ? _sourceService.Uninstall(sourceId)
+                    : _sourceService.Install(sourceId)).ConfigureAwait(true);
 
             FeedbackText = result.Success
-                ? $"{displayName} 已{(vm.Installed ? "断开" : "连接")}"
-                : BuildOperationFailureText(displayName, vm.Installed, result.Message);
+                ? $"{displayName} 已{(wasInstalled ? "断开" : "连接")}"
+                : BuildOperationFailureText(displayName, wasInstalled, result.Message);
 
-            // 刷新列表
-            await LoadSourcesAsync();
+            await LoadSourcesAsync().ConfigureAwait(true);
         }
         catch
         {
@@ -592,11 +765,89 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private async void WslSourceToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button button || button.Tag is not SourceViewModel vm)
+            return;
+        if (string.IsNullOrWhiteSpace(SelectedWslDistro))
+        {
+            FeedbackText = "未选择 WSL 发行版";
+            return;
+        }
+
+        vm.IsWslOperating = true;
+        var displayName = vm.DisplayName;
+        var distro = SelectedWslDistro;
+        var wasInstalled = vm.WslInstalled;
+        var sourceId = vm.Id;
+
+        try
+        {
+            var result = await RunWithTimeoutAsync(
+                () => wasInstalled
+                    ? _sourceService.UninstallWsl(sourceId, distro)
+                    : _sourceService.InstallWsl(sourceId, distro),
+                WslOperationTimeout,
+                new SourceOperationResultDto(sourceId, Success: false, Installed: wasInstalled, Message: "WSL 操作超时")).ConfigureAwait(true);
+
+            FeedbackText = result.Success
+                ? $"{displayName} 已{(wasInstalled ? "在 WSL 断开" : $"在 WSL({distro}) 连接")}"
+                : BuildWslOperationFailureText(displayName, wasInstalled, result.Message);
+
+            if (result.Success)
+            {
+                vm.WslInstalled = result.Installed;
+            }
+            else if (!string.Equals(result.Message, "WSL 操作超时", StringComparison.Ordinal))
+            {
+                var status = await RunWithTimeoutAsync(
+                    () => _sourceService.GetWslSourceStatus(sourceId, distro),
+                    TimeSpan.FromSeconds(3),
+                    new SourceStatusDto(sourceId, Supported: true, Installed: wasInstalled, DisplayName: displayName)).ConfigureAwait(true);
+                vm.WslInstalled = status.Installed;
+            }
+        }
+        catch
+        {
+            FeedbackText = $"{displayName} WSL 操作失败：Runtime 未连接";
+        }
+        finally
+        {
+            vm.IsWslOperating = false;
+        }
+    }
+
+    private static async Task<T> RunWithTimeoutAsync<T>(Func<T> work, TimeSpan timeout, T fallback)
+    {
+        try
+        {
+            return await Task.Run(work).WaitAsync(timeout).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return fallback;
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
     private static string BuildOperationFailureText(string displayName, bool wasInstalled, string? message)
     {
         var operationText = wasInstalled ? "断开" : "连接";
         if (!string.IsNullOrWhiteSpace(message) && message.Contains("Runtime", StringComparison.OrdinalIgnoreCase))
             return $"{displayName} {operationText}失败：Runtime 未连接";
+        if (!string.IsNullOrWhiteSpace(message))
+            return $"{displayName} {operationText}失败：{message}";
+        return $"{displayName} {operationText}失败";
+    }
+
+    private static string BuildWslOperationFailureText(string displayName, bool wasInstalled, string? message)
+    {
+        var operationText = wasInstalled ? "WSL 断开" : "WSL 连接";
+        if (!string.IsNullOrWhiteSpace(message))
+            return $"{displayName} {operationText}失败：{message}";
         return $"{displayName} {operationText}失败";
     }
 

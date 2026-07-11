@@ -1,9 +1,12 @@
 # CodeIsland-Windows - create Windows installer with bundled CodeOrbit Runtime
+# Optional: -SyncRuntime pulls Runtime per external/CodeOrbit/runtime-pin.json (default pin; -LatestRuntime for latest).
 param(
     [string]$Runtime = "win-x64",
     [string]$OutputDir = "release",
     [string]$InnoSetupCompiler,
-    [switch]$SkipPublish
+    [switch]$SkipPublish,
+    [switch]$SyncRuntime,
+    [switch]$LatestRuntime
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,6 +64,17 @@ $publishScript = Join-Path $projectRoot "scripts\publish-single-file.ps1"
 $installerScript = Join-Path $projectRoot "installer\CodeIsland-Windows.iss"
 $setupIconFile = Join-Path $projectRoot "src\CodeIsland.WpfApp\Assets\app.ico"
 $bundledRuntimeDir = Join-Path $projectRoot "external\CodeOrbit"
+$syncScript = Join-Path $projectRoot "scripts\sync-codeorbit-runtime.ps1"
+
+if ($SyncRuntime) {
+    Write-Host "Syncing CodeOrbit Runtime before packaging..." -ForegroundColor Cyan
+    $syncArgs = @()
+    if ($LatestRuntime) { $syncArgs += "-Latest" }
+    & $syncScript @syncArgs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
 
 if (-not (Test-Path -LiteralPath $installerScript)) {
     throw "Installer script not found: $installerScript"
@@ -71,7 +85,7 @@ if (-not (Test-WindowsIcoFile -Path $setupIconFile)) {
 }
 
 if (-not (Test-Path $bundledRuntimeDir)) {
-    throw "Bundled CodeOrbit Runtime not found: $bundledRuntimeDir"
+    throw "Bundled CodeOrbit Runtime not found: $bundledRuntimeDir. Run scripts\sync-codeorbit-runtime.ps1 or pass -SyncRuntime."
 }
 
 $iscc = Resolve-InnoSetupCompiler -ExplicitPath $InnoSetupCompiler

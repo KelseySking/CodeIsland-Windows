@@ -10,6 +10,10 @@ public sealed class SourceViewModel : INotifyPropertyChanged
     private readonly SourceDto _dto;
     private readonly string? _sourceIconUri;
     private bool _isOperating;
+    private bool _isWslOperating;
+    private bool _wslInstalled;
+    private bool _wslAvailable;
+    private string? _selectedDistro;
 
     public SourceViewModel(SourceDto dto)
     {
@@ -40,6 +44,56 @@ public sealed class SourceViewModel : INotifyPropertyChanged
     }
 
     public bool ButtonEnabled => !IsOperating;
+
+    public bool WslAvailable
+    {
+        get => _wslAvailable;
+        set
+        {
+            if (_wslAvailable == value) return;
+            _wslAvailable = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool WslInstalled
+    {
+        get => _wslInstalled;
+        set
+        {
+            if (_wslInstalled == value) return;
+            _wslInstalled = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(WslButtonContent));
+        }
+    }
+
+    public string? SelectedDistro
+    {
+        get => _selectedDistro;
+        set
+        {
+            if (_selectedDistro == value) return;
+            _selectedDistro = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string WslButtonContent => WslInstalled ? "WSL 断开" : "WSL 连接";
+
+    public bool IsWslOperating
+    {
+        get => _isWslOperating;
+        set
+        {
+            if (_isWslOperating == value) return;
+            _isWslOperating = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(WslButtonEnabled));
+        }
+    }
+
+    public bool WslButtonEnabled => !IsWslOperating && WslAvailable;
 
     private static string GetFallbackText(string displayName)
     {

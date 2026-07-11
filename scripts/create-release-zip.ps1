@@ -1,14 +1,28 @@
 # CodeIsland-Windows - package publish artifacts as ZIP with bundled CodeOrbit Runtime
+# Optional: -SyncRuntime pulls Runtime per external/CodeOrbit/runtime-pin.json (default pin; -LatestRuntime for latest).
 param(
     [string]$Runtime = "win-x64",
-    [string]$OutputDir = "release"
+    [string]$OutputDir = "release",
+    [switch]$SyncRuntime,
+    [switch]$LatestRuntime
 )
 
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$appPublish = Join-Path $projectRoot "src\CodeIsland.WpfApp\bin\Release\net8.0-windows\$Runtime\publish"
+$appPublish = Join-Path $projectRoot ("src\CodeIsland.WpfApp\bin\Release\net8.0-windows\{0}\publish" -f $Runtime)
 $bundledRuntimeDir = Join-Path $projectRoot "external\CodeOrbit"
+$syncScript = Join-Path $projectRoot "scripts\sync-codeorbit-runtime.ps1"
+
+if ($SyncRuntime) {
+    Write-Host "Syncing CodeOrbit Runtime before packaging..." -ForegroundColor Cyan
+    $syncArgs = @()
+    if ($LatestRuntime) { $syncArgs += "-Latest" }
+    & $syncScript @syncArgs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
 
 # Check WpfApp publish
 if (-not (Test-Path $appPublish)) {
@@ -21,6 +35,7 @@ if (-not (Test-Path $appPublish)) {
 if (-not (Test-Path $bundledRuntimeDir)) {
     Write-Host "Bundled CodeOrbit Runtime not found: $bundledRuntimeDir" -ForegroundColor Red
     Write-Host "The external/CodeOrbit directory should contain Runtime files." -ForegroundColor Yellow
+    Write-Host "Or run: .\scripts\sync-codeorbit-runtime.ps1  (or pass -SyncRuntime)" -ForegroundColor Yellow
     exit 1
 }
 

@@ -350,6 +350,25 @@
             <StackPanel>
               <TextBlock Text="工具连接" Style="{StaticResource SettingsSectionTitleStyle}" />
 
+              <Border Style="{StaticResource SettingsCardStyle}"
+                      Visibility="{Binding WslAvailable, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="WSL 发行版" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="在所选发行版内安装/卸载 hook（与 Windows 连接独立）。" Style="{StaticResource SettingsHelpStyle}" />
+                  </StackPanel>
+                  <ComboBox Grid.Column="1"
+                            MinWidth="140"
+                            VerticalAlignment="Center"
+                            ItemsSource="{Binding WslDistros}"
+                            SelectedItem="{Binding SelectedWslDistro, Mode=TwoWay}" />
+                </Grid>
+              </Border>
+
               <!-- 工具列表 -->
               <ItemsControl ItemsSource="{Binding Sources}">
                 <ItemsControl.ItemTemplate>
@@ -398,19 +417,29 @@
                         </StackPanel>
 
                         <!-- 操作按钮 -->
-                        <Button Grid.Column="2"
-                                Content="{Binding ButtonContent}"
-                                IsEnabled="{Binding ButtonEnabled}"
-                                Tag="{Binding}"
-                                Click="SourceToggle_Click"
-                                Padding="16,7"
-                                VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                          <Button Content="{Binding ButtonContent}"
+                                  IsEnabled="{Binding ButtonEnabled}"
+                                  Tag="{Binding}"
+                                  Click="SourceToggle_Click"
+                                  Padding="16,7"
+                                  Margin="0,0,8,0"
+                                  VerticalAlignment="Center" />
+                          <Button Content="{Binding WslButtonContent}"
+                                  IsEnabled="{Binding WslButtonEnabled}"
+                                  Tag="{Binding}"
+                                  Click="WslSourceToggle_Click"
+                                  Padding="12,7"
+                                  VerticalAlignment="Center"
+                                  Visibility="{Binding WslAvailable, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+                        </StackPanel>
                       </Grid>
                     </Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </StackPanel>
+
           </ScrollViewer>
         </TabItem>
 

@@ -47,10 +47,15 @@ public sealed record SourceOperationResultDto(
     bool Installed,
     string Message);
 
+public sealed record WslDistrosDto(
+    IReadOnlyList<string> Distros,
+    string? Message = null);
+
 public sealed record ChatMessageDto(
     bool IsUser,
     string Text,
     DateTimeOffset TimestampUtc);
+
 
 public sealed record ToolHistoryEntryDto(
     string ToolName,

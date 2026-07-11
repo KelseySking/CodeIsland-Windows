@@ -188,6 +188,30 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
             return result?.Success == true;
         });
 
+    public WslDistrosDto ListWslDistros()
+    {
+        var dto = RunSyncNullable(() => GetJsonAsync<WslDistrosDto>("sources/wsl/distros", CancellationToken.None));
+        if (dto?.Distros != null)
+            return dto;
+        return new WslDistrosDto([]);
+    }
+
+    public SourceStatusDto GetWslSourceStatus(string source, string? distro = null)
+    {
+        var path = AppendDistroQuery($"sources/{Escape(source)}/wsl/status", distro);
+        return RunSyncNullable(() => GetJsonAsync<SourceStatusDto>(path, CancellationToken.None)) ??
+               new SourceStatusDto(source, Supported: false, Installed: false, DisplayName: source);
+    }
+
+    public SourceOperationResultDto InstallWsl(string source, string? distro = null) =>
+        RunWslSourceOperation(source, "install", distro);
+
+    public SourceOperationResultDto UninstallWsl(string source, string? distro = null) =>
+        RunWslSourceOperation(source, "uninstall", distro);
+
+    public SourceOperationResultDto RepairWsl(string source, string? distro = null) =>
+        RunWslSourceOperation(source, "repair", distro);
+
     public void Dispose()
     {
         if (_disposed)
@@ -221,7 +245,37 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
         return result ?? SourceOperationFailed(source, RuntimeUnavailableMessage);
     }
 
+    private SourceOperationResultDto RunWslSourceOperation(string source, string operation, string? distro)
+    {
+        var path = AppendDistroQuery($"sources/{Escape(source)}/wsl/{operation}", distro);
+        var result = RunRuntimeSync<SourceOperationResultDto?>(
+            $"source-wsl-{operation}",
+            path,
+            fallback: null,
+            async () =>
+            {
+                using var response = await _http.PostAsync(path, content: null, CancellationToken.None).ConfigureAwait(false);
+                LogFailedStatus(response, path, "source-wsl-operation-failed", new Dictionary<string, string?>
+                {
+                    ["source"] = source,
+                    ["operation"] = operation,
+                    ["distro"] = distro
+                });
+                return await ReadResponseJsonAsync<SourceOperationResultDto>(response, path, CancellationToken.None).ConfigureAwait(false);
+            });
+
+        return result ?? SourceOperationFailed(source, RuntimeUnavailableMessage);
+    }
+
+    private static string AppendDistroQuery(string path, string? distro)
+    {
+        if (string.IsNullOrWhiteSpace(distro))
+            return path;
+        return $"{path}?distro={Escape(distro.Trim())}";
+    }
+
     private async Task RefreshSourcesAsync(CancellationToken ct)
+
     {
         try
         {
