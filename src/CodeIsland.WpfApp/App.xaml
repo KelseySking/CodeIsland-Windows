@@ -113,6 +113,217 @@
         <Setter Property="Margin" Value="0,4,0,0" />
       </Style>
 
+      <Style x:Key="SettingsWarningCardStyle" TargetType="Border" BasedOn="{StaticResource SettingsCardStyle}">
+        <Setter Property="BorderBrush" Value="#66FF5F57" />
+        <Setter Property="Background" Value="#1AFF5F57" />
+      </Style>
+
+      <Style x:Key="SettingsNavItemStyle" TargetType="ListBoxItem">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0,0,0,4" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource HudMutedTextBrush}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="ListBoxItem">
+              <Border x:Name="Root" Background="Transparent" CornerRadius="10" Padding="12,10">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="3" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <Border x:Name="Accent" Grid.Column="0" Width="3" CornerRadius="2" Background="Transparent" Margin="0,2,10,2" />
+                  <ContentPresenter Grid.Column="1" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Root" Property="Background" Value="#10FFFFFF" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                  <Setter TargetName="Root" Property="Background" Value="#14FFFFFF" />
+                  <Setter TargetName="Accent" Property="Background" Value="{StaticResource HudAccentBrush}" />
+                  <Setter Property="Foreground" Value="{StaticResource HudTextBrush}" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style x:Key="TrayMenuItemStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Padding" Value="12,9" />
+        <Setter Property="Margin" Value="0,1" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Border x:Name="Root"
+                      Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="10"
+                      Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalAlignment="Center"
+                                  RecognizesAccessKey="True" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Root" Property="Background" Value="#14FFFFFF" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                  <Setter TargetName="Root" Property="Background" Value="#1AFFFFFF" />
+                </Trigger>
+                <Trigger Property="IsFocused" Value="True">
+                  <Setter TargetName="Root" Property="Background" Value="#12FFFFFF" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                  <Setter Property="Opacity" Value="0.45" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style x:Key="TrayMenuDangerItemStyle" TargetType="Button" BasedOn="{StaticResource TrayMenuItemStyle}">
+        <Setter Property="Foreground" Value="#FFFF9A95" />
+      </Style>
+
+      <!-- HUD 风格开关：不用 WPF-UI ToggleSwitch（主题资源不全时会塌成横线） -->
+      <Style x:Key="SettingsToggleStyle" TargetType="CheckBox">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="CheckBox">
+              <Grid Width="44" Height="24" Background="Transparent">
+                <Border x:Name="Track"
+                        Background="#33FFFFFF"
+                        BorderBrush="#28FFFFFF"
+                        BorderThickness="1"
+                        CornerRadius="12" />
+                <Ellipse x:Name="Thumb"
+                         Width="18"
+                         Height="18"
+                         Fill="#F2FFFFFF"
+                         HorizontalAlignment="Left"
+                         Margin="3,0,0,0"
+                         VerticalAlignment="Center" />
+              </Grid>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                  <Setter TargetName="Track" Property="Background" Value="#668EE6D0" />
+                  <Setter TargetName="Track" Property="BorderBrush" Value="#AA8EE6D0" />
+                  <Setter TargetName="Thumb" Property="Fill" Value="#FF8EE6D0" />
+                  <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0" />
+                  <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Track" Property="Opacity" Value="0.92" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                  <Setter Property="Opacity" Value="0.45" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style x:Key="SettingsTitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Width" Value="40" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{StaticResource HudMutedTextBrush}" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="8">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Root" Property="Background" Value="#14FFFFFF" />
+                  <Setter Property="Foreground" Value="{StaticResource HudTextBrush}" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                  <Setter TargetName="Root" Property="Background" Value="#1AFFFFFF" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style x:Key="SettingsCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource SettingsTitleBarButtonStyle}">
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="8">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Root" Property="Background" Value="#33FF5F57" />
+                  <Setter Property="Foreground" Value="#FFFFB4AF" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                  <Setter TargetName="Root" Property="Background" Value="#55FF5F57" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- 工具连接：未连接=薄荷强调「连接」；已连接=危险色「断开」 -->
+      <Style x:Key="SourceConnectButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="MinWidth" Value="72" />
+        <Setter Property="Background" Value="#338EE6D0" />
+        <Setter Property="BorderBrush" Value="#AA8EE6D0" />
+        <Setter Property="Foreground" Value="#FFB8F5E6" />
+        <Style.Triggers>
+          <DataTrigger Binding="{Binding Installed}" Value="True">
+            <Setter Property="Background" Value="#33FF5F57" />
+            <Setter Property="BorderBrush" Value="#AAFF5F57" />
+            <Setter Property="Foreground" Value="#FFFFB4AF" />
+          </DataTrigger>
+          <Trigger Property="IsEnabled" Value="False">
+            <Setter Property="Opacity" Value="0.5" />
+          </Trigger>
+        </Style.Triggers>
+      </Style>
+
+      <Style x:Key="SourceWslConnectButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="MinWidth" Value="88" />
+        <Setter Property="Background" Value="#228EE6D0" />
+        <Setter Property="BorderBrush" Value="#778EE6D0" />
+        <Setter Property="Foreground" Value="#FFB8F5E6" />
+        <Style.Triggers>
+          <DataTrigger Binding="{Binding WslInstalled}" Value="True">
+            <Setter Property="Background" Value="#28FF5F57" />
+            <Setter Property="BorderBrush" Value="#88FF5F57" />
+            <Setter Property="Foreground" Value="#FFFFB4AF" />
+          </DataTrigger>
+          <Trigger Property="IsEnabled" Value="False">
+            <Setter Property="Opacity" Value="0.5" />
+          </Trigger>
+        </Style.Triggers>
+      </Style>
+
       <!-- Source 图标 -->
       <TextBlock x:Key="ClaudeIcon" Text="🤖" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
       <TextBlock x:Key="CodexIcon" Text="⚙️" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />

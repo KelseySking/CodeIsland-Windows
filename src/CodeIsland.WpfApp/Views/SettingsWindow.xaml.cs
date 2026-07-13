@@ -2,8 +2,13 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using CodeIsland.Contracts;
 using CodeIsland.WpfApp.Services;
 using CodeIsland.WpfApp.ViewModels;
@@ -13,9 +18,16 @@ namespace CodeIsland.WpfApp.Views;
 public partial class SettingsWindow : Window, INotifyPropertyChanged
 {
     private const string GitHubReleasesUrl = "https://github.com/KelseySking/CodeOrbit-Rust/releases";
+    private const string AboutSectionId = "about";
+    private const string RecordIdleLabel = "点击录制";
+    private const string RecordActiveLabel = "按下组合键…";
 
     private readonly SettingsManager _settings;
     private readonly IWpfSourceService _sourceService;
+    private readonly Dictionary<string, FrameworkElement> _sections = new(StringComparer.Ordinal);
+    private string _activeSectionId = "general";
+    private string? _recordingHotkeyField;
+    private bool _sectionTransitionInProgress;
     private bool _autoApproveSafeTools;
     private bool _autoApproveAllPermissions;
     private bool _hideWhenFullscreen;
@@ -81,6 +93,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _selectedWslDistro = _settings.Get("last_wsl_distro", (string?)null);
         DataContext = this;
         RefreshMonitorOptions();
+        RegisterSections();
+        ShowSection(_activeSectionId, animate: false);
 
         // 加载 Runtime 状态
         _ = LoadRuntimeStatusAsync();
@@ -88,6 +102,88 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         // 加载工具列表
         _ = LoadSourcesAsync();
     }
+
+    private void RootChrome_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // 几何裁剪保证四角同一半径（纯 CornerRadius+子矩形顶栏会导致上下圆角观感不一致）
+        if (RootClip is null)
+            return;
+        RootClip.Rect = new Rect(0, 0, Math.Max(0, e.NewSize.Width), Math.Max(0, e.NewSize.Height));
+        RootClip.RadiusX = 14;
+        RootClip.RadiusY = 14;
+    }
+
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left)
+            return;
+
+        // 点在最小化/关闭按钮上时不拖
+        if (FindAncestor<System.Windows.Controls.Button>(e.OriginalSource as DependencyObject) != null)
+            return;
+
+        if (e.ClickCount == 2)
+        {
+            WindowState = WindowState == WindowState.Maximized
+                ? WindowState.Normal
+                : WindowState.Maximized;
+            return;
+        }
+
+        try
+        {
+            DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
+    {
+        while (current != null)
+        {
+            if (current is T match)
+                return match;
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    private void Minimize_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void Close_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    /// <summary>
+    /// 托盘打开时 Win32 常拒绝抢前台：Show + 短暂 Topmost + SetForegroundWindow。
+    /// </summary>
+    public void BringToFront()
+    {
+        if (!IsVisible)
+            Show();
+
+        if (WindowState == WindowState.Minimized)
+            WindowState = WindowState.Normal;
+
+        Activate();
+        Topmost = true;
+        Topmost = false;
+        Focus();
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero)
+            SetForegroundWindow(hwnd);
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
 
     public event Func<string, string, string, bool>? HotkeysChangeRequested;
@@ -383,6 +479,15 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         }
     }
 
+    public string ToggleHotkeyRecordLabel =>
+        string.Equals(_recordingHotkeyField, "toggle", StringComparison.Ordinal) ? RecordActiveLabel : RecordIdleLabel;
+
+    public string ApproveHotkeyRecordLabel =>
+        string.Equals(_recordingHotkeyField, "approve", StringComparison.Ordinal) ? RecordActiveLabel : RecordIdleLabel;
+
+    public string DenyHotkeyRecordLabel =>
+        string.Equals(_recordingHotkeyField, "deny", StringComparison.Ordinal) ? RecordActiveLabel : RecordIdleLabel;
+
     public bool SoundEnabled
     {
         get => _soundEnabled;
@@ -522,9 +627,251 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         FeedbackText = "快捷键已保存并重新注册";
     }
 
-    public void SelectAboutTab()
+    public void SelectAboutTab() => SelectSection(AboutSectionId);
+
+    public void SelectSection(string sectionId)
     {
-        SettingsTabs.SelectedIndex = Math.Max(0, SettingsTabs.Items.Count - 1);
+        if (string.IsNullOrWhiteSpace(sectionId))
+            return;
+
+        foreach (var item in SectionNav.Items.OfType<ListBoxItem>())
+        {
+            if (!string.Equals(item.Tag as string, sectionId, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Same item already selected: SelectionChanged won't fire (e.g. reopen About).
+            if (ReferenceEquals(SectionNav.SelectedItem, item))
+            {
+                if (!string.Equals(sectionId, "hotkeys", StringComparison.OrdinalIgnoreCase))
+                    CancelHotkeyRecording();
+                ShowSection(sectionId, animate: false);
+                return;
+            }
+
+            SectionNav.SelectedItem = item;
+            return;
+        }
+    }
+
+    private void RegisterSections()
+    {
+        _sections["general"] = SectionGeneral;
+        _sections["behavior"] = SectionBehavior;
+        _sections["appearance"] = SectionAppearance;
+        _sections["hotkeys"] = SectionHotkeys;
+        _sections["tools"] = SectionTools;
+        _sections[AboutSectionId] = SectionAbout;
+    }
+
+    private void SectionNav_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SectionNav.SelectedItem is not ListBoxItem item || item.Tag is not string sectionId)
+            return;
+
+        if (string.Equals(sectionId, _activeSectionId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (!string.Equals(sectionId, "hotkeys", StringComparison.OrdinalIgnoreCase))
+            CancelHotkeyRecording();
+
+        ShowSection(sectionId, animate: true);
+    }
+
+    private void ShowSection(string sectionId, bool animate)
+    {
+        if (!_sections.TryGetValue(sectionId, out var next))
+            return;
+
+        var previousId = _activeSectionId;
+        _sections.TryGetValue(previousId, out var previous);
+        _activeSectionId = sectionId;
+
+        // Mid-transition clicks: land on the latest section without stacking animations.
+        if (_sectionTransitionInProgress)
+        {
+            FinishSectionTransition(next);
+            return;
+        }
+
+        if (!animate || previous is null || ReferenceEquals(previous, next))
+        {
+            FinishSectionTransition(next);
+            return;
+        }
+
+        _sectionTransitionInProgress = true;
+        var settings = HudAnimationSettings.ForCurrentRenderer();
+        var duration = settings.ContentDuration;
+        var slide = settings.AllowsContentMotion ? settings.ContentSlideOffset : 0d;
+
+        var fadeOut = new DoubleAnimation(1, 0, duration)
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        fadeOut.Completed += (_, _) =>
+        {
+            // Selection may have moved again while fading out.
+            if (!_sections.TryGetValue(_activeSectionId, out var target))
+                target = next;
+
+            foreach (var section in _sections.Values)
+                section.Visibility = ReferenceEquals(section, target) ? Visibility.Visible : Visibility.Collapsed;
+
+            ContentHostTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+            ContentHostTranslate.X = slide;
+            var fadeIn = new DoubleAnimation(0, 1, duration)
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+            fadeIn.Completed += (_, _) =>
+            {
+                _sectionTransitionInProgress = false;
+                // Apply any selection that arrived during fade-in.
+                if (_sections.TryGetValue(_activeSectionId, out var latest) && !ReferenceEquals(latest, target))
+                    FinishSectionTransition(latest);
+            };
+            ContentHost.BeginAnimation(OpacityProperty, fadeIn);
+
+            if (slide > 0)
+            {
+                var slideIn = new DoubleAnimation(slide, 0, duration)
+                {
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                };
+                ContentHostTranslate.BeginAnimation(TranslateTransform.XProperty, slideIn);
+            }
+            else
+            {
+                ContentHostTranslate.X = 0;
+            }
+        };
+
+        ContentHost.BeginAnimation(OpacityProperty, fadeOut);
+    }
+
+    private void FinishSectionTransition(FrameworkElement next)
+    {
+        ContentHost.BeginAnimation(OpacityProperty, null);
+        ContentHostTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+        foreach (var section in _sections.Values)
+            section.Visibility = ReferenceEquals(section, next) ? Visibility.Visible : Visibility.Collapsed;
+        ContentHost.Opacity = 1;
+        ContentHostTranslate.X = 0;
+        _sectionTransitionInProgress = false;
+    }
+
+    private void RecordToggleHotkey_Click(object sender, RoutedEventArgs e) => BeginHotkeyRecording("toggle");
+
+    private void RecordApproveHotkey_Click(object sender, RoutedEventArgs e) => BeginHotkeyRecording("approve");
+
+    private void RecordDenyHotkey_Click(object sender, RoutedEventArgs e) => BeginHotkeyRecording("deny");
+
+    private void BeginHotkeyRecording(string field)
+    {
+        _recordingHotkeyField = field;
+        NotifyHotkeyRecordLabels();
+        FeedbackText = "正在录制快捷键，按下组合键；Esc 取消";
+        SectionHotkeys.Focusable = true;
+        // Click focus stays on the button; force section so PreviewKeyDown receives keys.
+        SectionHotkeys.Focus();
+        Keyboard.Focus(SectionHotkeys);
+    }
+
+    private void CancelHotkeyRecording()
+    {
+        if (_recordingHotkeyField is null)
+            return;
+
+        _recordingHotkeyField = null;
+        NotifyHotkeyRecordLabels();
+        FeedbackText = "已取消快捷键录制";
+    }
+
+    private void NotifyHotkeyRecordLabels()
+    {
+        OnPropertyChanged(nameof(ToggleHotkeyRecordLabel));
+        OnPropertyChanged(nameof(ApproveHotkeyRecordLabel));
+        OnPropertyChanged(nameof(DenyHotkeyRecordLabel));
+    }
+
+    private void HotkeySection_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (_recordingHotkeyField is null)
+            return;
+
+        e.Handled = true;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
+            return;
+
+        if (key == Key.Escape)
+        {
+            CancelHotkeyRecording();
+            return;
+        }
+
+        if (!TryFormatHotkey(Keyboard.Modifiers, key, out var hotkeyText, out var error))
+        {
+            FeedbackText = $"快捷键无效：{error}";
+            return;
+        }
+
+        var field = _recordingHotkeyField;
+        _recordingHotkeyField = null;
+        NotifyHotkeyRecordLabels();
+
+        switch (field)
+        {
+            case "toggle":
+                TogglePanelHotkey = hotkeyText;
+                break;
+            case "approve":
+                ApproveHotkey = hotkeyText;
+                break;
+            case "deny":
+                DenyHotkey = hotkeyText;
+                break;
+        }
+    }
+
+    private static bool TryFormatHotkey(ModifierKeys modifiers, Key key, out string text, out string error)
+    {
+        text = "";
+        error = "";
+        if (modifiers == ModifierKeys.None)
+        {
+            error = "必须包含 Ctrl、Alt、Shift 或 Win 修饰键";
+            return false;
+        }
+
+        var parts = new List<string>(4);
+        if (modifiers.HasFlag(ModifierKeys.Control))
+            parts.Add("Ctrl");
+        if (modifiers.HasFlag(ModifierKeys.Alt))
+            parts.Add("Alt");
+        if (modifiers.HasFlag(ModifierKeys.Shift))
+            parts.Add("Shift");
+        if (modifiers.HasFlag(ModifierKeys.Windows))
+            parts.Add("Win");
+
+        var keyText = key switch
+        {
+            >= Key.A and <= Key.Z => key.ToString().ToUpperInvariant(),
+            >= Key.D0 and <= Key.D9 => ((char)('0' + (key - Key.D0))).ToString(),
+            >= Key.NumPad0 and <= Key.NumPad9 => ((char)('0' + (key - Key.NumPad0))).ToString(),
+            >= Key.F1 and <= Key.F24 => key.ToString().ToUpperInvariant(),
+            _ => null
+        };
+
+        if (keyText is null)
+        {
+            error = $"不支持的按键 {key}";
+            return false;
+        }
+
+        parts.Add(keyText);
+        text = string.Join("+", parts);
+        return true;
     }
 
     public sealed record DisplayMonitorOption(string Id, string DisplayName);

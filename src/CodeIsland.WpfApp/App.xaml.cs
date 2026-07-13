@@ -19,6 +19,7 @@ public partial class App : System.Windows.Application
     private WpfSoundManager? _soundManager;
     private WpfWebhookNotifier? _webhookNotifier;
     private HudWindow? _hudWindow;
+    private SettingsWindow? _settingsWindow;
     private string? _lastSoundName;
     private DateTime _lastSoundAt;
 
@@ -46,7 +47,12 @@ public partial class App : System.Windows.Application
         _hudWindow.ShowNoActivate();
         _ = StartRuntimeAsync(logger);
 
-        _tray = new WpfTrayService(_hudWindow, ShowSettings, ShowAbout, Shutdown);
+        _tray = new WpfTrayService(
+            _hudWindow,
+            () => WpfTrayRuntimeStatus.ProbeAsync(_runtimeManager.ApiBaseUrl, _runtimeManager.ApiToken),
+            ShowSettings,
+            ShowAbout,
+            Shutdown);
         _hotkey = new WpfGlobalHotkey();
         RegisterHotkeys();
     }
@@ -143,12 +149,27 @@ public partial class App : System.Windows.Application
         if (_settings == null)
             return;
 
+        if (_settingsWindow != null)
+        {
+            if (selectAboutTab)
+                _settingsWindow.SelectAboutTab();
+            _settingsWindow.BringToFront();
+            return;
+        }
+
         var window = new SettingsWindow(_settings, _sourceService);
+        _settingsWindow = window;
+        window.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_settingsWindow, window))
+                _settingsWindow = null;
+        };
         if (selectAboutTab)
             window.SelectAboutTab();
         window.HotkeysChangeRequested += TryRegisterHotkeys;
+        // 不 Owner 到 Topmost HUD，否则 z-order/激活会被 HUD 拖累
         window.Show();
-        window.Activate();
+        window.BringToFront();
     }
 
     private void OnPlaySoundRequested(string soundName)

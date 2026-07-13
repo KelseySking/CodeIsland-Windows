@@ -7,7 +7,7 @@ namespace CodeIsland.WpfApp.ViewModels;
 
 public sealed class SourceViewModel : INotifyPropertyChanged
 {
-    private readonly SourceDto _dto;
+    private SourceDto _dto;
     private readonly string? _sourceIconUri;
     private bool _isOperating;
     private bool _isWslOperating;
@@ -30,6 +30,15 @@ public sealed class SourceViewModel : INotifyPropertyChanged
     public bool HasSourceIcon => !string.IsNullOrWhiteSpace(_sourceIconUri);
 
     public string ButtonContent => Installed ? "断开" : "连接";
+
+    /// <summary>操作完成后用最新 DTO 刷新连接态（按钮文案/强调色）。</summary>
+    public void ApplyDto(SourceDto dto)
+    {
+        _dto = dto;
+        OnPropertyChanged(nameof(Installed));
+        OnPropertyChanged(nameof(ButtonContent));
+        OnPropertyChanged(nameof(DisplayName));
+    }
 
     public bool IsOperating
     {

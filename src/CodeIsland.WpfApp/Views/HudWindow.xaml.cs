@@ -267,6 +267,12 @@ public partial class HudWindow : Window
         }
     }
 
+    // Tray menu labels; snapshot only at open time.
+    public bool IsHudVisible => IsVisible;
+
+    public bool IsHudExpanded =>
+        IsVisible && _state.SurfaceKind != WpfHudSurfaceKind.Collapsed;
+
     private void OnStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (_shellTransitionInProgress)
