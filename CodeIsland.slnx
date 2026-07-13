@@ -3,7 +3,4 @@
     <Project Path="src/CodeIsland.Contracts/CodeIsland.Contracts.csproj" />
     <Project Path="src/CodeIsland.WpfApp/CodeIsland.WpfApp.csproj" />
   </Folder>
-  <Folder Name="/samples/">
-    <Project Path="samples/external-display-console/ExternalDisplay.Sample.csproj" />
-  </Folder>
 </Solution>
