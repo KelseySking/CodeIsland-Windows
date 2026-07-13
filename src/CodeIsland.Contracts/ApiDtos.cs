@@ -33,23 +33,37 @@ public sealed record SourceDto(
     string DisplayName,
     string IconName,
     bool Installed,
-    SourceCapabilitiesDto Capabilities);
+    SourceCapabilitiesDto Capabilities,
+    string? SourceType = null);
 
 public sealed record SourceStatusDto(
     string Source,
     bool Supported,
     bool Installed,
-    string DisplayName);
+    string DisplayName,
+    string? Distro = null,
+    bool? ProbeOk = null,
+    string? Error = null);
 
 public sealed record SourceOperationResultDto(
     string Source,
     bool Success,
     bool Installed,
-    string Message);
+    string Message,
+    string? Distro = null,
+    string? Code = null);
+
+public sealed record WslDistroDto(
+    string Name,
+    string State,
+    uint? Version = null,
+    bool IsDefault = false);
 
 public sealed record WslDistrosDto(
-    IReadOnlyList<string> Distros,
-    string? Message = null);
+    IReadOnlyList<WslDistroDto> Distros,
+    string? DefaultDistro = null,
+    string? Message = null,
+    string? Code = null);
 
 public sealed record ChatMessageDto(
     bool IsUser,

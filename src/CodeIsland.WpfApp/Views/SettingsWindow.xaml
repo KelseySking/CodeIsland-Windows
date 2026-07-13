@@ -362,10 +362,12 @@
                     <TextBlock Text="在所选发行版内安装/卸载 hook（与 Windows 连接独立）。" Style="{StaticResource SettingsHelpStyle}" />
                   </StackPanel>
                   <ComboBox Grid.Column="1"
-                            MinWidth="140"
+                            MinWidth="180"
                             VerticalAlignment="Center"
                             ItemsSource="{Binding WslDistros}"
-                            SelectedItem="{Binding SelectedWslDistro, Mode=TwoWay}" />
+                            DisplayMemberPath="Label"
+                            SelectedValuePath="Name"
+                            SelectedValue="{Binding SelectedWslDistro, Mode=TwoWay}" />
                 </Grid>
               </Border>
 

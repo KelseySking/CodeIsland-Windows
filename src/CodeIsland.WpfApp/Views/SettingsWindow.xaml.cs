@@ -45,7 +45,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private bool _wslAvailable;
     private bool _suppressWslDistroRefresh;
     private string? _selectedWslDistro;
-    private ObservableCollection<string> _wslDistros = new();
+    private ObservableCollection<WslDistroItem> _wslDistros = new();
     private int _wslLoadGeneration;
     private static readonly TimeSpan WslListTimeout = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan WslStatusTimeout = TimeSpan.FromSeconds(8);
@@ -98,7 +98,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     // 工具列表
     public ObservableCollection<SourceViewModel> Sources { get; } = new();
 
-    public ObservableCollection<string> WslDistros => _wslDistros;
+    public ObservableCollection<WslDistroItem> WslDistros => _wslDistros;
 
     public bool WslAvailable
     {
@@ -604,37 +604,48 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             });
 
             // Distro list only; per-source status is best-effort and timed out separately.
-            var distros = await RunWithTimeoutAsync(
+            var listResult = await RunWithTimeoutAsync(
                 () =>
                 {
                     try
                     {
-                        var wsl = _sourceService.ListWslDistros();
-                        return wsl.Distros?
-                            .Where(d => !string.IsNullOrWhiteSpace(d))
-                            .Select(d => d.Trim())
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                            .ToList() ?? [];
+                        return _sourceService.ListWslDistros();
                     }
                     catch
                     {
-                        return new List<string>();
+                        return new WslDistrosDto([]);
                     }
                 },
                 WslListTimeout,
-                []).ConfigureAwait(false);
+                new WslDistrosDto([])).ConfigureAwait(false);
 
             if (loadGen != _wslLoadGeneration)
                 return;
 
+            var distroItems = (listResult.Distros ?? [])
+                .Where(d => !string.IsNullOrWhiteSpace(d.Name))
+                .GroupBy(d => d.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .Select(d => new WslDistroItem(d.Name.Trim(), FormatWslDistroLabel(d)))
+                .ToList();
+
             string? selected = null;
-            if (distros.Count > 0)
+            if (distroItems.Count > 0)
             {
-                selected = _selectedWslDistro;
-                if (string.IsNullOrWhiteSpace(selected) ||
-                    !distros.Contains(selected, StringComparer.OrdinalIgnoreCase))
+                var names = distroItems.Select(d => d.Name).ToList();
+                if (!string.IsNullOrWhiteSpace(listResult.DefaultDistro) &&
+                    names.Contains(listResult.DefaultDistro.Trim(), StringComparer.OrdinalIgnoreCase))
                 {
-                    selected = distros[0];
+                    selected = names.First(n => string.Equals(n, listResult.DefaultDistro.Trim(), StringComparison.OrdinalIgnoreCase));
+                }
+                else if (!string.IsNullOrWhiteSpace(_selectedWslDistro) &&
+                         names.Contains(_selectedWslDistro, StringComparer.OrdinalIgnoreCase))
+                {
+                    selected = names.First(n => string.Equals(n, _selectedWslDistro, StringComparison.OrdinalIgnoreCase));
+                }
+                else
+                {
+                    selected = distroItems[0].Name;
                 }
             }
 
@@ -644,16 +655,27 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                 try
                 {
                     _wslDistros.Clear();
-                    foreach (var d in distros)
+                    foreach (var d in distroItems)
                         _wslDistros.Add(d);
 
-                    SelectedWslDistro = selected;
-                    WslAvailable = distros.Count > 0;
+                    // ItemsSource rebuild clears ComboBox SelectedValue; force notify even if name unchanged.
+                    _selectedWslDistro = selected;
+                    OnPropertyChanged(nameof(SelectedWslDistro));
+                    if (!string.IsNullOrWhiteSpace(selected))
+                        _settings.Set("last_wsl_distro", selected);
+
+                    WslAvailable = distroItems.Count > 0;
                     foreach (var vm in Sources)
                     {
                         vm.WslAvailable = WslAvailable;
                         vm.SelectedDistro = selected;
                         // leave WslInstalled until background status refresh finishes
+                    }
+
+                    if (distroItems.Count == 0 &&
+                        (!string.IsNullOrWhiteSpace(listResult.Message) || !string.IsNullOrWhiteSpace(listResult.Code)))
+                    {
+                        FeedbackText = FormatSourceError("WSL 发行版列表不可用", listResult.Message, listResult.Code);
                     }
                 }
                 finally
@@ -662,7 +684,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                 }
             });
 
-            if (distros.Count > 0 && !string.IsNullOrWhiteSpace(selected))
+            if (distroItems.Count > 0 && !string.IsNullOrWhiteSpace(selected))
                 await RefreshWslStatusesAsync(loadGen).ConfigureAwait(false);
         }
         catch
@@ -698,22 +720,27 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         var statuses = await RunWithTimeoutAsync(
             () =>
             {
-                var map = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                var map = new Dictionary<string, WslStatusView>(StringComparer.OrdinalIgnoreCase);
                 foreach (var id in ids)
                 {
                     try
                     {
-                        map[id] = _sourceService.GetWslSourceStatus(id, distro).Installed;
+                        var status = _sourceService.GetWslSourceStatus(id, distro);
+                        var probeFailed = status.ProbeOk == false;
+                        map[id] = new WslStatusView(
+                            probeFailed ? null : status.Installed,
+                            probeFailed,
+                            status.Error);
                     }
                     catch
                     {
-                        map[id] = false;
+                        map[id] = new WslStatusView(null, ProbeFailed: true, Error: "WSL 状态查询失败");
                     }
                 }
                 return map;
             },
             WslStatusTimeout,
-            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)).ConfigureAwait(false);
+            new Dictionary<string, WslStatusView>(StringComparer.OrdinalIgnoreCase)).ConfigureAwait(false);
 
         if (expectedGeneration is int gen2 && gen2 != _wslLoadGeneration)
             return;
@@ -722,13 +749,28 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         {
             if (!string.Equals(SelectedWslDistro, distro, StringComparison.OrdinalIgnoreCase))
                 return;
+
+            string? probeError = null;
             foreach (var vm in Sources)
             {
                 vm.SelectedDistro = distro;
                 vm.WslAvailable = true;
-                if (statuses.TryGetValue(vm.Id, out var installed))
+                if (!statuses.TryGetValue(vm.Id, out var status))
+                    continue;
+
+                if (status.ProbeFailed)
+                {
+                    // probeOk=false: installed is untrusted — do not force "未安装".
+                    probeError ??= status.Error;
+                    continue;
+                }
+
+                if (status.Installed is bool installed)
                     vm.WslInstalled = installed;
             }
+
+            if (!string.IsNullOrWhiteSpace(probeError))
+                FeedbackText = FormatSourceError("WSL 探测失败", probeError, "wsl_unavailable");
         });
     }
 
@@ -751,7 +793,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
             FeedbackText = result.Success
                 ? $"{displayName} 已{(wasInstalled ? "断开" : "连接")}"
-                : BuildOperationFailureText(displayName, wasInstalled, result.Message);
+                : BuildOperationFailureText(displayName, wasInstalled, result.Message, result.Code);
 
             await LoadSourcesAsync().ConfigureAwait(true);
         }
@@ -788,11 +830,11 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                     ? _sourceService.UninstallWsl(sourceId, distro)
                     : _sourceService.InstallWsl(sourceId, distro),
                 WslOperationTimeout,
-                new SourceOperationResultDto(sourceId, Success: false, Installed: wasInstalled, Message: "WSL 操作超时")).ConfigureAwait(true);
+                new SourceOperationResultDto(sourceId, Success: false, Installed: wasInstalled, Message: "WSL 操作超时", Distro: distro, Code: "operation_failed")).ConfigureAwait(true);
 
             FeedbackText = result.Success
-                ? $"{displayName} 已{(wasInstalled ? "在 WSL 断开" : $"在 WSL({distro}) 连接")}"
-                : BuildWslOperationFailureText(displayName, wasInstalled, result.Message);
+                ? $"{displayName} 已{(wasInstalled ? "在 WSL 断开" : $"在 WSL({result.Distro ?? distro}) 连接")}"
+                : BuildWslOperationFailureText(displayName, wasInstalled, result.Message, result.Code);
 
             if (result.Success)
             {
@@ -803,8 +845,9 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                 var status = await RunWithTimeoutAsync(
                     () => _sourceService.GetWslSourceStatus(sourceId, distro),
                     TimeSpan.FromSeconds(3),
-                    new SourceStatusDto(sourceId, Supported: true, Installed: wasInstalled, DisplayName: displayName)).ConfigureAwait(true);
-                vm.WslInstalled = status.Installed;
+                    new SourceStatusDto(sourceId, Supported: true, Installed: wasInstalled, DisplayName: displayName, Distro: distro)).ConfigureAwait(true);
+                if (status.ProbeOk != false)
+                    vm.WslInstalled = status.Installed;
             }
         }
         catch
@@ -833,23 +876,67 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private static string BuildOperationFailureText(string displayName, bool wasInstalled, string? message)
+    private static string BuildOperationFailureText(string displayName, bool wasInstalled, string? message, string? code = null)
     {
         var operationText = wasInstalled ? "断开" : "连接";
         if (!string.IsNullOrWhiteSpace(message) && message.Contains("Runtime", StringComparison.OrdinalIgnoreCase))
             return $"{displayName} {operationText}失败：Runtime 未连接";
-        if (!string.IsNullOrWhiteSpace(message))
-            return $"{displayName} {operationText}失败：{message}";
-        return $"{displayName} {operationText}失败";
+        return FormatSourceError($"{displayName} {operationText}失败", message, code);
     }
 
-    private static string BuildWslOperationFailureText(string displayName, bool wasInstalled, string? message)
+    private static string BuildWslOperationFailureText(string displayName, bool wasInstalled, string? message, string? code = null)
     {
         var operationText = wasInstalled ? "WSL 断开" : "WSL 连接";
-        if (!string.IsNullOrWhiteSpace(message))
-            return $"{displayName} {operationText}失败：{message}";
-        return $"{displayName} {operationText}失败";
+        return FormatSourceError($"{displayName} {operationText}失败", message, code);
     }
+
+    private static string FormatSourceError(string prefix, string? message, string? code)
+    {
+        var mapped = MapSourceErrorCode(code);
+        if (!string.IsNullOrWhiteSpace(mapped) && !string.IsNullOrWhiteSpace(message) &&
+            !string.Equals(mapped, message, StringComparison.OrdinalIgnoreCase) &&
+            !message.Contains(mapped, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{prefix}：{mapped}（{message}）";
+        }
+
+        if (!string.IsNullOrWhiteSpace(mapped))
+            return $"{prefix}：{mapped}";
+        if (!string.IsNullOrWhiteSpace(message))
+            return $"{prefix}：{message}";
+        return prefix;
+    }
+
+    private static string? MapSourceErrorCode(string? code) =>
+        code?.Trim().ToLowerInvariant() switch
+        {
+            "wsl_unavailable" => "WSL 不可用或探测失败",
+            "missing_bridge" => "缺少 bridge 可执行文件",
+            "invalid_distro" => "发行版不可用（系统/Docker 等）",
+            "hook_write_failed" => "写入 hook 配置失败",
+            "unsupported_source" => "不支持的工具源",
+            "operation_failed" => "操作失败",
+            _ => null
+        };
+
+    private static string FormatWslDistroLabel(WslDistroDto distro)
+    {
+        var name = distro.Name.Trim();
+        var state = string.IsNullOrWhiteSpace(distro.State) ? null : distro.State.Trim();
+        var version = distro.Version is uint v and > 0 ? $"WSL{v}" : null;
+        var parts = new List<string> { name };
+        if (!string.IsNullOrWhiteSpace(state))
+            parts.Add(state);
+        if (!string.IsNullOrWhiteSpace(version))
+            parts.Add(version);
+        if (distro.IsDefault)
+            parts.Add("默认");
+        return string.Join(" · ", parts);
+    }
+
+    public sealed record WslDistroItem(string Name, string Label);
+
+    private sealed record WslStatusView(bool? Installed, bool ProbeFailed, string? Error);
 
     private void OpenGitHubReleases_Click(object sender, RoutedEventArgs e)
     {

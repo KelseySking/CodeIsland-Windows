@@ -102,7 +102,7 @@ dotnet run --project src/CodeIsland.WpfApp
 
 ### 发布与打包
 
-内嵌 Runtime 默认来自仓库中的 `external/CodeOrbit`，版本由 `external/CodeOrbit/runtime-pin.json` 钉死（当前为 CodeOrbit-Rust **v0.1.2**，含 WSL hook API）。
+内嵌 Runtime 默认来自仓库中的 `external/CodeOrbit`，版本由 `external/CodeOrbit/runtime-pin.json` 钉死（当前为 CodeOrbit-Rust **v0.1.3**，含增强 WSL source API）。
 
 ```powershell
 # 按 pin 从 GitHub 同步 Runtime（默认可复现）

@@ -190,17 +190,18 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
 
     public WslDistrosDto ListWslDistros()
     {
-        var dto = RunSyncNullable(() => GetJsonAsync<WslDistrosDto>("sources/wsl/distros", CancellationToken.None));
-        if (dto?.Distros != null)
-            return dto;
-        return new WslDistrosDto([]);
+        var dto = RunSyncNullable(() => GetWslDistrosAsync(CancellationToken.None));
+        if (dto == null)
+            return new WslDistrosDto([]);
+        // Keep message/code even when distros is omitted/null.
+        return dto.Distros != null ? dto : dto with { Distros = [] };
     }
 
     public SourceStatusDto GetWslSourceStatus(string source, string? distro = null)
     {
         var path = AppendDistroQuery($"sources/{Escape(source)}/wsl/status", distro);
-        return RunSyncNullable(() => GetJsonAsync<SourceStatusDto>(path, CancellationToken.None)) ??
-               new SourceStatusDto(source, Supported: false, Installed: false, DisplayName: source);
+        return RunSyncNullable(() => GetWslSourceStatusAsync(source, path, CancellationToken.None)) ??
+               new SourceStatusDto(source, Supported: false, Installed: false, DisplayName: source, Distro: distro, ProbeOk: false, Error: RuntimeUnavailableMessage);
     }
 
     public SourceOperationResultDto InstallWsl(string source, string? distro = null) =>
@@ -272,6 +273,73 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
         if (string.IsNullOrWhiteSpace(distro))
             return path;
         return $"{path}?distro={Escape(distro.Trim())}";
+    }
+
+    private async Task<WslDistrosDto?> GetWslDistrosAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var response = await _http.GetAsync("sources/wsl/distros", ct).ConfigureAwait(false);
+            // 400 body may still carry message/code when WSL is unavailable.
+            var dto = await ReadResponseJsonAsync<WslDistrosDto>(response, "sources/wsl/distros", ct).ConfigureAwait(false);
+            if (dto != null)
+                return dto;
+            if (!response.IsSuccessStatusCode)
+            {
+                LogFailedStatus(response, "sources/wsl/distros", "wsl-distros-failed");
+                return new WslDistrosDto([], Code: "wsl_unavailable");
+            }
+            return null;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger?.Write("WpfRuntimeApiClient", "wsl-distros-exception", new Dictionary<string, string?>
+            {
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
+            return null;
+        }
+    }
+
+    private async Task<SourceStatusDto?> GetWslSourceStatusAsync(string source, string path, CancellationToken ct)
+    {
+        try
+        {
+            using var response = await _http.GetAsync(path, ct).ConfigureAwait(false);
+            // probeOk=false may arrive as HTTP 400 with a full SourceStatusDto body.
+            var dto = await ReadResponseJsonAsync<SourceStatusDto>(response, path, ct).ConfigureAwait(false);
+            if (dto != null)
+                return dto;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                LogFailedStatus(response, path, "wsl-source-status-failed", new Dictionary<string, string?>
+                {
+                    ["source"] = source
+                });
+                return new SourceStatusDto(
+                    source,
+                    Supported: true,
+                    Installed: false,
+                    DisplayName: source,
+                    ProbeOk: false,
+                    Error: $"HTTP {(int)response.StatusCode}");
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger?.Write("WpfRuntimeApiClient", "wsl-source-status-exception", new Dictionary<string, string?>
+            {
+                ["source"] = source,
+                ["path"] = path,
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
+            return null;
+        }
     }
 
     private async Task RefreshSourcesAsync(CancellationToken ct)
@@ -765,7 +833,7 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
     private static SourceOperationResultDto SourceOperationFailed(string source, string message) =>
         new(source, Success: false, Installed: false, Message: message);
 
-    private sealed record SuccessResponse(bool Success);
+    private sealed record SuccessResponse(bool Success, string? Scope = null);
 
     private sealed record RuntimeAssetsRepairResponse(bool Success, RuntimeAssetsDto Assets);
 }

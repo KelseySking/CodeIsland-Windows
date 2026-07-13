@@ -107,7 +107,12 @@ All routes below are under `/api`.
 | `POST` | `/sources/{source}/install` | Install or update hooks for a source. | `SourceOperationResultDto` |
 | `POST` | `/sources/{source}/uninstall` | Remove CodeIsland-owned hooks for a source. | `SourceOperationResultDto` |
 | `POST` | `/sources/{source}/repair` | Repair hooks for one source. | `SourceOperationResultDto` |
-| `POST` | `/sources/repair-all` | Repair all already-installed hook configurations. | `{ success: boolean }` |
+| `POST` | `/sources/repair-all` | Repair Windows-side installed hooks only (not WSL). | `{ success: boolean, scope: "windows" }` |
+| `GET` | `/sources/wsl/distros` | List user WSL distros (Docker filtered). | `WslDistrosDto` (`distros: WslDistroDto[]`, `defaultDistro?`) |
+| `GET` | `/sources/{source}/wsl/status` | WSL hook status (`?distro=` optional). | `SourceStatusDto` (`distro`, `probeOk`, `error`) |
+| `POST` | `/sources/{source}/wsl/install` | Install WSL hooks calling Windows bridge. | `SourceOperationResultDto` |
+| `POST` | `/sources/{source}/wsl/uninstall` | Remove WSL hooks. | `SourceOperationResultDto` |
+| `POST` | `/sources/{source}/wsl/repair` | Repair one WSL source. | `SourceOperationResultDto` |
 | `GET` | `/runtime-assets` | Get deployed Runtime hook script and bridge paths. | `RuntimeAssetsDto` |
 | `POST` | `/runtime-assets/repair` | Repair shared Runtime assets. | `{ success: boolean, assets: RuntimeAssetsDto }` |
 

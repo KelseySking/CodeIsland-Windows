@@ -104,7 +104,7 @@ After startup, the HUD floating window is shown and a CodeIsland icon appears in
 
 ### Publish & Package
 
-The bundled Runtime lives in `external/CodeOrbit`, pinned by `external/CodeOrbit/runtime-pin.json` (currently CodeOrbit-Rust **v0.1.2**, which includes WSL hook APIs).
+The bundled Runtime lives in `external/CodeOrbit`, pinned by `external/CodeOrbit/runtime-pin.json` (currently CodeOrbit-Rust **v0.1.3**, which includes enriched WSL source APIs).
 
 ```powershell
 # Sync Runtime from GitHub using the pin (reproducible by default)
