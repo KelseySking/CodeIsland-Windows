@@ -210,13 +210,14 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     public string DetailToolText => SelectedSession?.ToolText ?? "$ 就绪";
     public string DetailUserPrompt => FormatRecentMessage(SelectedSnapshot?.LastUserPrompt, "暂无用户问题");
     public string DetailAssistantReplyTitle => $"{SelectedSession?.Source ?? "AI"} 回复";
-    public string DetailAssistantReply => FormatRecentMessage(GetSelectedSessionAssistantReply(), $"暂无 {SelectedSession?.Source ?? "AI"} 回复");
+    // 详情/完成卡要完整 Markdown 原文，不再截首行
+    public string DetailAssistantReply => FormatFullMessage(GetSelectedSessionAssistantReply(), $"暂无 {SelectedSession?.Source ?? "AI"} 回复");
     public string CompletionTitle => CompletionSession == null ? "回复已完成" : $"{WpfSourceDisplay.GetDisplayName(CompletionSession.Source, CompletionSession.SourceDisplayName)} 回复已完成";
     public string CompletionSource => CompletionSession == null ? "未知工具" : WpfSourceDisplay.GetDisplayName(CompletionSession.Source, CompletionSession.SourceDisplayName);
     public string CompletionProject => CompletionSession?.ProjectName ?? CompletionSession?.WorkingDirectory ?? "未知项目";
     public string CompletionUserPrompt => FormatRecentMessage(CompletionSession?.LastUserPrompt, "");
     public bool HasCompletionUserPrompt => !string.IsNullOrWhiteSpace(CompletionUserPrompt);
-    public string CompletionText => FormatRecentMessage(CompletionSession?.CompletionText ?? CompletionSession?.LastAssistantMessage, "回复已完成");
+    public string CompletionText => FormatFullMessage(CompletionSession?.CompletionText ?? CompletionSession?.LastAssistantMessage, "回复已完成");
 
     public ICommand ShowSessionListCommand { get; }
     public ICommand CollapseCommand { get; }
@@ -1009,7 +1010,8 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private string FormatSessionAssistantReply(SessionSnapshot? session)
     {
         var source = session == null ? "AI" : WpfSourceDisplay.GetDisplayName(session.Source, session.SourceDisplayName);
-        return FormatRecentMessage(GetSessionAssistantReply(session), $"暂无 {source} 回复");
+        // 内联展开详情同样渲染完整 Markdown
+        return FormatFullMessage(GetSessionAssistantReply(session), $"暂无 {source} 回复");
     }
 
     private static string? GetSessionAssistantReply(SessionSnapshot? session)
@@ -1303,6 +1305,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         var firstLine = text.Replace("\r", " ", StringComparison.Ordinal).Split('\n', 2)[0].Trim();
         return firstLine.Length <= 180 ? firstLine : firstLine[..180] + "…";
     }
+
+    private static string FormatFullMessage(string? text, string fallback) =>
+        string.IsNullOrWhiteSpace(text) ? fallback : text;
 
     private static string BuildPermissionContent(PermissionRequest request)
     {

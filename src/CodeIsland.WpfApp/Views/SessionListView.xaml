@@ -129,9 +129,11 @@
                                   <TextBlock Text="{Binding DetailUserPrompt}" FontSize="11" Foreground="#E6FFFFFF" TextWrapping="Wrap" />
                                 </ScrollViewer>
                                 <TextBlock Grid.Row="3" Text="AI 回复" FontSize="10" FontWeight="SemiBold" Foreground="#80FFFFFF" Margin="0,10,0,0" />
-                                <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Margin="0,3,0,0" CanContentScroll="False" PanningMode="VerticalOnly">
-                                  <TextBlock Text="{Binding DetailAssistantReply}" FontSize="11" Foreground="#F2FFFFFF" TextWrapping="Wrap" />
-                                </ScrollViewer>
+                                <views:MarkdownViewer Grid.Row="4"
+                                                      Markdown="{Binding DetailAssistantReply}"
+                                                      BodyFontSize="11"
+                                                      Margin="0,3,0,0"
+                                                      ClipToBounds="True" />
                               </Grid>
                             </StackPanel>
                           </Grid>

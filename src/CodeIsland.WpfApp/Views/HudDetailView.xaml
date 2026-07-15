@@ -71,9 +71,11 @@
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
           <TextBlock Grid.Row="0" Text="{Binding DetailAssistantReplyTitle}" FontSize="10" Foreground="#80FFFFFF" />
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Margin="0,3,0,0" ClipToBounds="True">
-            <TextBlock Text="{Binding DetailAssistantReply}" FontSize="12" Foreground="#F2FFFFFF" TextWrapping="Wrap" />
-          </ScrollViewer>
+          <views:MarkdownViewer Grid.Row="1"
+                                Markdown="{Binding DetailAssistantReply}"
+                                BodyFontSize="12"
+                                Margin="0,3,0,0"
+                                ClipToBounds="True" />
         </Grid>
       </Border>
     </Grid>

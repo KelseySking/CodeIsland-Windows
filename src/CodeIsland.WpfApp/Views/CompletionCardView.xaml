@@ -67,9 +67,11 @@
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
           <TextBlock Grid.Row="0" Text="AI 回复" FontSize="10" Foreground="#80FFFFFF" />
-          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden" Margin="0,6,0,0" ClipToBounds="True">
-            <TextBlock Text="{Binding CompletionText}" FontSize="12" Foreground="#E6FFFFFF" TextWrapping="Wrap" />
-          </ScrollViewer>
+          <views:MarkdownViewer Grid.Row="1"
+                                Markdown="{Binding CompletionText}"
+                                BodyFontSize="12"
+                                Margin="0,6,0,0"
+                                ClipToBounds="True" />
         </Grid>
       </Border>
 
