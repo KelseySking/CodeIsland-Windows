@@ -10,12 +10,25 @@ public static class WpfLocalApiTokenStore
         if (!string.IsNullOrWhiteSpace(existing))
             return existing;
 
+        var token = CreateToken();
+        settings.Set("api_token", token);
+        return token;
+    }
+
+    /// <summary>生成新 token 并写入 settings（不记录明文）。</summary>
+    public static string RegenerateToken(SettingsManager settings)
+    {
+        var token = CreateToken();
+        settings.Set("api_token", token);
+        return token;
+    }
+
+    public static string CreateToken()
+    {
         var tokenBytes = RandomNumberGenerator.GetBytes(32);
-        var token = Convert.ToBase64String(tokenBytes)
+        return Convert.ToBase64String(tokenBytes)
             .TrimEnd('=')
             .Replace("+", "-", StringComparison.Ordinal)
             .Replace("/", "_", StringComparison.Ordinal);
-        settings.Set("api_token", token);
-        return token;
     }
 }

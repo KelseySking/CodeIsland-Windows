@@ -13,6 +13,7 @@ public partial class App : System.Windows.Application
 
     private Mutex? _singleInstanceMutex;
     private SettingsManager? _settings;
+    private EventLogger? _logger;
     private WpfRuntimeProcessManager? _runtimeManager;
     private IWpfRuntimeClient? _runtimeClient;
     private WpfAppState? _appState;
@@ -25,6 +26,7 @@ public partial class App : System.Windows.Application
     private SettingsWindow? _settingsWindow;
     private string? _lastSoundName;
     private DateTime _lastSoundAt;
+    private readonly SemaphoreSlim _reconnectLock = new(1, 1);
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -43,9 +45,9 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
 
         _settings = new SettingsManager();
-        var logger = new EventLogger();
-        _runtimeManager = new WpfRuntimeProcessManager(_settings, logger);
-        var runtimeClient = new WpfRuntimeApiClient(_runtimeManager.ApiBaseUrl, _runtimeManager.ApiToken, logger);
+        _logger = new EventLogger();
+        _runtimeManager = new WpfRuntimeProcessManager(_settings, _logger);
+        var runtimeClient = new WpfRuntimeApiClient(_runtimeManager.ApiBaseUrl, _runtimeManager.ApiToken, _logger);
         _runtimeClient = runtimeClient;
         _sourceService = runtimeClient;
         _webhookNotifier = new WpfWebhookNotifier(_settings);
@@ -59,11 +61,18 @@ public partial class App : System.Windows.Application
         _settings.SettingChanged += OnRuntimeSettingChanged;
         _hudWindow = new HudWindow(_appState, _settings);
         _hudWindow.ShowNoActivate();
-        _ = StartRuntimeAsync(logger);
+        _ = StartRuntimeAsync(_logger);
 
+        // 闭包读取当前 manager，避免托盘探测使用陈旧 baseUrl/token
         _tray = new WpfTrayService(
             _hudWindow,
-            () => WpfTrayRuntimeStatus.ProbeAsync(_runtimeManager.ApiBaseUrl, _runtimeManager.ApiToken),
+            () =>
+            {
+                var manager = _runtimeManager;
+                if (manager == null)
+                    return Task.FromResult((false, "● 未连接"));
+                return WpfTrayRuntimeStatus.ProbeAsync(manager.ApiBaseUrl, manager.ApiToken);
+            },
             ShowSettings,
             ShowAbout,
             Shutdown);
@@ -112,6 +121,127 @@ public partial class App : System.Windows.Application
                 ["message"] = ex.Message,
                 ["exception"] = ex.GetType().Name
             });
+        }
+    }
+
+    /// <summary>
+    /// 应用内重连 CodeOrbit：先接线新 client 并退订旧 client → Dispose 旧连接 →
+    /// 按需停自有 host → EnsureStarted → Start 新 client。
+    /// </summary>
+    public async Task<(bool Success, string Message)> ReconnectCodeOrbitAsync()
+    {
+        if (_settings == null || _runtimeManager == null || _appState == null)
+            return (false, "应用尚未就绪");
+
+        if (!await _reconnectLock.WaitAsync(0).ConfigureAwait(false))
+            return (false, "正在重连，请稍候");
+
+        var logger = _logger ?? new EventLogger();
+        try
+        {
+            logger.Write("WpfRuntime", "reconnect-begin", new Dictionary<string, string?>
+            {
+                ["baseUrl"] = _runtimeManager.ApiBaseUrl,
+                ["mode"] = _settings.Get("runtime_launch_mode", WpfRuntimeProcessManager.ManagedMode)
+            });
+
+            var oldClient = _runtimeClient;
+
+            // 先按最新 settings 创建 client 并完成重绑，避免停 host 时旧 WS 仍向 AppState 推事件。
+            var newClient = new WpfRuntimeApiClient(_runtimeManager.ApiBaseUrl, _runtimeManager.ApiToken, logger);
+            _runtimeClient = newClient;
+            _sourceService = newClient;
+            _appState.ReplaceClient(newClient);
+            _settingsWindow?.ReplaceSourceService(newClient);
+
+            if (oldClient != null && !ReferenceEquals(oldClient, newClient))
+            {
+                try
+                {
+                    oldClient.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    logger.Write("WpfRuntimeApiClient", "dispose-failed", new Dictionary<string, string?>
+                    {
+                        ["message"] = ex.Message,
+                        ["exception"] = ex.GetType().Name
+                    });
+                }
+            }
+
+            try
+            {
+                _runtimeManager.StopOwnedIfNeeded();
+            }
+            catch (Exception ex)
+            {
+                logger.Write("WpfRuntimeProcessManager", "stop-owned-failed", new Dictionary<string, string?>
+                {
+                    ["message"] = ex.Message,
+                    ["exception"] = ex.GetType().Name
+                });
+            }
+
+            // 短暂等待旧 host 释放端口
+            await Task.Delay(300).ConfigureAwait(false);
+
+            try
+            {
+                await _runtimeManager.EnsureStartedAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.Write("WpfRuntimeProcessManager", "reconnect-ensure-failed", new Dictionary<string, string?>
+                {
+                    ["message"] = ex.Message,
+                    ["exception"] = ex.GetType().Name
+                });
+            }
+
+            try
+            {
+                await newClient.StartAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.Write("WpfRuntimeApiClient", "reconnect-start-failed", new Dictionary<string, string?>
+                {
+                    ["message"] = ex.Message,
+                    ["exception"] = ex.GetType().Name
+                });
+                return (false, $"已切换连接参数，但 CodeOrbit 未就绪：{ex.Message}");
+            }
+
+            var version = await newClient.GetVersionAsync().ConfigureAwait(false);
+            if (version == null)
+            {
+                logger.Write("WpfRuntime", "reconnect-unhealthy", new Dictionary<string, string?>
+                {
+                    ["baseUrl"] = _runtimeManager.ApiBaseUrl
+                });
+                return (false, "已应用设置，但当前无法连接 CodeOrbit。external 模式请先手动启动实例，或检查 host/port/token。");
+            }
+
+            logger.Write("WpfRuntime", "reconnect-complete", new Dictionary<string, string?>
+            {
+                ["baseUrl"] = _runtimeManager.ApiBaseUrl,
+                ["version"] = version.Version
+            });
+            return (true, $"已重连 CodeOrbit v{version.Version}");
+        }
+        catch (Exception ex)
+        {
+            logger.Write("WpfRuntime", "reconnect-exception", new Dictionary<string, string?>
+            {
+                ["message"] = ex.Message,
+                ["exception"] = ex.GetType().Name
+            });
+            return (false, $"重连失败：{ex.Message}");
+        }
+        finally
+        {
+            _reconnectLock.Release();
         }
     }
 
@@ -195,6 +325,7 @@ public partial class App : System.Windows.Application
         if (selectAboutTab)
             window.SelectAboutTab();
         window.HotkeysChangeRequested += TryRegisterHotkeys;
+        window.CodeOrbitReconnectRequested += ReconnectCodeOrbitAsync;
         // 不 Owner 到 Topmost HUD，否则 z-order/激活会被 HUD 拖累
         window.Show();
         window.BringToFront();
@@ -251,6 +382,7 @@ public partial class App : System.Windows.Application
         _runtimeManager?.Dispose();
         _soundManager?.Dispose();
         _webhookNotifier?.Dispose();
+        _reconnectLock.Dispose();
         if (_singleInstanceMutex != null)
         {
             try

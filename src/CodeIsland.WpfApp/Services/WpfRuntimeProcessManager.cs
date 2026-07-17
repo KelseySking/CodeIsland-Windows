@@ -258,7 +258,11 @@ public sealed class WpfRuntimeProcessManager : IDisposable
         }
     }
 
-    public void Dispose()
+    /// <summary>
+    /// 仅在本程序托管且绑定本机回环时停止自有 CodeOrbit 进程。
+    /// 共享绑定（如 0.0.0.0）或 external 模式不会误杀。
+    /// </summary>
+    public void StopOwnedIfNeeded()
     {
         if (_ownedRuntimeProcess == null)
         {
@@ -272,11 +276,23 @@ public sealed class WpfRuntimeProcessManager : IDisposable
             {
                 ["reason"] = "shared-remote-mode"
             });
+            // 放弃所有权，避免后续误以为仍可托管该共享实例
+            try
+            {
+                _ownedRuntimeProcess.Dispose();
+            }
+            catch
+            {
+            }
+            _ownedRuntimeProcess = null;
             return;
         }
 
         if (_ownedRuntimeProcess is not { HasExited: false } process)
+        {
+            _ownedRuntimeProcess = null;
             return;
+        }
 
         try
         {
@@ -290,7 +306,14 @@ public sealed class WpfRuntimeProcessManager : IDisposable
         catch
         {
         }
+        finally
+        {
+            _ownedRuntimeProcess = null;
+            _shutdownOwnedRuntimeOnDispose = false;
+        }
     }
+
+    public void Dispose() => StopOwnedIfNeeded();
 
     private static string NormalizeBindHost(string? host)
     {

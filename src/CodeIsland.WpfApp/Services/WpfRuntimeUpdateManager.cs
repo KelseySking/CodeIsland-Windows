@@ -24,9 +24,10 @@ public static class WpfRuntimeUpdateManager
     public static string StagingRuntimeDirectory => Path.Combine(RuntimeRoot, "staging");
 
     /// <summary>
-    /// Copy bundled Runtime (install dir or repo external/CodeOrbit) into the stable
+    /// Copy bundled CodeOrbit (install dir or repo external/CodeOrbit) into the stable
     /// managed location %LOCALAPPDATA%\CodeIsland\runtime\current so hook install
     /// always writes a durable bridge path instead of a dev repo path.
+    /// Path segment <c>runtime/</c> is historical and kept for compatibility.
     /// </summary>
     public static bool EnsureSeededFromBundled(EventLogger logger)
     {

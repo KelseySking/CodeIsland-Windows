@@ -23,7 +23,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private const string RecordActiveLabel = "按下组合键…";
 
     private readonly SettingsManager _settings;
-    private readonly IWpfSourceService _sourceService;
+    private IWpfSourceService _sourceService;
     private readonly Dictionary<string, FrameworkElement> _sections = new(StringComparer.Ordinal);
     private string _activeSectionId = "general";
     private string? _recordingHotkeyField;
@@ -47,7 +47,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private double _volumePercent = 70;
     private string _feedbackText = "设置会自动保存。";
 
-    // Runtime 状态栏
+    // CodeOrbit 连接状态栏
     private string _runtimeConnectionStatus = "CodeOrbit 连接中...";
     private string _runtimeVersion = "";
     private System.Windows.Media.Brush _runtimeStatusColor = System.Windows.Media.Brushes.Gray;
@@ -56,6 +56,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private bool _sourcesLoaded;
     private bool _wslAvailable;
     private bool _suppressWslDistroRefresh;
+    private bool _wslMetadataLoaded;
+    private bool _wslMetadataLoading;
     private string? _selectedWslDistro;
     private ObservableCollection<WslDistroItem> _wslDistros = new();
     private int _wslLoadGeneration;
@@ -63,10 +65,20 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private static readonly TimeSpan WslStatusTimeout = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan WslOperationTimeout = TimeSpan.FromSeconds(60);
 
-
     // CodeOrbit 版本信息
     private string _runtimeProduct = "";
     private string _currentVersion = "";
+
+    // CodeOrbit 连接设置
+    private bool _managedLaunchEnabled = true;
+    private string _apiBindHost = "127.0.0.1";
+    private string _apiPortText = "32145";
+    private string _apiToken = "";
+    private bool _showApiToken;
+    private bool _suppressTokenPasswordSync;
+    private bool _codeOrbitReconnectBusy;
+    private string _codeOrbitReconnectFeedback = "修改后点击「应用并重连」使连接参数生效。";
+    private bool _apiTokenPasswordBoxInitialized;
 
     public SettingsWindow(SettingsManager settings, IWpfSourceService? sourceService = null)
     {
@@ -91,16 +103,32 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _showFullRecentMessages = _settings.Get("show_full_recent_messages", false);
         _volumePercent = Math.Clamp(_settings.Get("volume", 0.7), 0.0, 1.0) * 100.0;
         _selectedWslDistro = _settings.Get("last_wsl_distro", (string?)null);
+        LoadCodeOrbitSettingsFromStore();
         DataContext = this;
         RefreshMonitorOptions();
         RegisterSections();
         ShowSection(_activeSectionId, animate: false);
+        Loaded += SettingsWindow_Loaded;
 
-        // 加载 Runtime 状态
+        // 加载 CodeOrbit 连接状态
         _ = LoadRuntimeStatusAsync();
 
-        // 加载工具列表
-        _ = LoadSourcesAsync();
+        // 仅加载 Windows 侧工具列表；WSL 探测会执行 wsl.exe，延后到下拉/「WSL 连接」时再做。
+        _ = LoadWindowsSourcesAsync();
+    }
+
+    private void SettingsWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        SyncApiTokenPasswordBox();
+    }
+
+    private void LoadCodeOrbitSettingsFromStore()
+    {
+        var mode = _settings.Get("runtime_launch_mode", WpfRuntimeProcessManager.ManagedMode);
+        _managedLaunchEnabled = !string.Equals(mode, WpfRuntimeProcessManager.ExternalMode, StringComparison.OrdinalIgnoreCase);
+        _apiBindHost = NormalizeBindHostInput(_settings.Get("api_bind_host", "127.0.0.1"));
+        _apiPortText = Math.Clamp(_settings.Get("api_port", 32145), 1024, 65535).ToString(CultureInfo.InvariantCulture);
+        _apiToken = WpfLocalApiTokenStore.EnsureToken(_settings);
     }
 
     private void RootChrome_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -187,6 +215,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
 
     public event Func<string, string, string, bool>? HotkeysChangeRequested;
+    public event Func<Task<(bool Success, string Message)>>? CodeOrbitReconnectRequested;
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<DisplayMonitorOption> DisplayMonitorOptions { get; } = new();
@@ -235,7 +264,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     }
 
 
-    // Runtime 状态栏
+    // CodeOrbit 连接状态（绑定属性名历史保留）
     public string RuntimeConnectionStatus
     {
         get => _runtimeConnectionStatus;
@@ -291,6 +320,136 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             OnPropertyChanged();
         }
     }
+
+    public bool ManagedLaunchEnabled
+    {
+        get => _managedLaunchEnabled;
+        set
+        {
+            if (_managedLaunchEnabled == value) return;
+            _managedLaunchEnabled = value;
+            OnPropertyChanged();
+            _settings.Set(
+                "runtime_launch_mode",
+                value ? WpfRuntimeProcessManager.ManagedMode : WpfRuntimeProcessManager.ExternalMode);
+            FeedbackText = value
+                ? "已设为托管启动 CodeOrbit（需点「应用并重连」生效）"
+                : "已设为连接外部 CodeOrbit（需点「应用并重连」生效）";
+            CodeOrbitReconnectFeedback = "设置已保存，点击「应用并重连」使连接生效。";
+        }
+    }
+
+    public string ApiBindHost
+    {
+        get => _apiBindHost;
+        set
+        {
+            var normalized = NormalizeBindHostInput(value);
+            if (string.Equals(_apiBindHost, normalized, StringComparison.Ordinal)) return;
+            _apiBindHost = normalized;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowWildcardHostWarning));
+            _settings.Set("api_bind_host", normalized);
+            FeedbackText = "绑定地址已保存（需点「应用并重连」生效）";
+            CodeOrbitReconnectFeedback = "设置已保存，点击「应用并重连」使连接生效。";
+        }
+    }
+
+    public bool ShowWildcardHostWarning =>
+        IsWildcardHost(_apiBindHost);
+
+    public string ApiPortText
+    {
+        get => _apiPortText;
+        set
+        {
+            var text = value?.Trim() ?? "";
+            if (string.Equals(_apiPortText, text, StringComparison.Ordinal)) return;
+            _apiPortText = text;
+            OnPropertyChanged();
+            if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var port))
+            {
+                FeedbackText = "端口必须是数字";
+                return;
+            }
+
+            if (port is < 1024 or > 65535)
+            {
+                FeedbackText = "端口范围为 1024–65535，已保留当前输入（重连前会校验）";
+                return;
+            }
+
+            _settings.Set("api_port", port);
+            FeedbackText = "端口已保存（需点「应用并重连」生效）";
+            CodeOrbitReconnectFeedback = "设置已保存，点击「应用并重连」使连接生效。";
+        }
+    }
+
+    public string ApiToken
+    {
+        get => _apiToken;
+        set
+        {
+            var token = value ?? "";
+            if (string.Equals(_apiToken, token, StringComparison.Ordinal)) return;
+            _apiToken = token;
+            OnPropertyChanged();
+            if (!string.IsNullOrWhiteSpace(token))
+                _settings.Set("api_token", token);
+            SyncApiTokenPasswordBox();
+            FeedbackText = "Token 已保存（需点「应用并重连」生效）";
+            CodeOrbitReconnectFeedback = "设置已保存，点击「应用并重连」使连接生效。";
+        }
+    }
+
+    public bool ShowApiToken
+    {
+        get => _showApiToken;
+        set
+        {
+            if (_showApiToken == value) return;
+            _showApiToken = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TokenVisibilityLabel));
+            if (!value)
+                SyncApiTokenPasswordBox();
+        }
+    }
+
+    public string TokenVisibilityLabel => ShowApiToken ? "隐藏" : "显示";
+
+    public bool CodeOrbitReconnectBusy
+    {
+        get => _codeOrbitReconnectBusy;
+        private set
+        {
+            if (_codeOrbitReconnectBusy == value) return;
+            _codeOrbitReconnectBusy = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CodeOrbitReconnectEnabled));
+            OnPropertyChanged(nameof(CodeOrbitReconnectButtonLabel));
+        }
+    }
+
+    public bool CodeOrbitReconnectEnabled => !CodeOrbitReconnectBusy;
+
+    public string CodeOrbitReconnectButtonLabel => CodeOrbitReconnectBusy ? "重连中…" : "应用并重连";
+
+    public string CodeOrbitReconnectFeedback
+    {
+        get => _codeOrbitReconnectFeedback;
+        private set
+        {
+            if (string.Equals(_codeOrbitReconnectFeedback, value, StringComparison.Ordinal)) return;
+            _codeOrbitReconnectFeedback = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string CodeOrbitStatusHelp =>
+        string.IsNullOrWhiteSpace(RuntimeVersion)
+            ? "连接状态来自当前已激活的 CodeOrbit 客户端。"
+            : $"当前客户端版本 {RuntimeVersion}";
 
     public bool AutoApproveSafeTools
     {
@@ -660,6 +819,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _sections["appearance"] = SectionAppearance;
         _sections["hotkeys"] = SectionHotkeys;
         _sections["tools"] = SectionTools;
+        _sections["codeorbit"] = SectionCodeOrbit;
         _sections[AboutSectionId] = SectionAbout;
     }
 
@@ -889,6 +1049,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                 {
                     RuntimeConnectionStatus = "CodeOrbit 未连接";
                     RuntimeStatusColor = System.Windows.Media.Brushes.Gray;
+                    RuntimeVersion = "";
+                    OnPropertyChanged(nameof(CodeOrbitStatusHelp));
                 });
                 return;
             }
@@ -899,10 +1061,12 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                 await Dispatcher.InvokeAsync(() =>
                 {
                     RuntimeVersion = $"v{version.Version}";
-                    RuntimeProduct = version.Product;
+                    // 绑定属性名历史保留；展示文案统一为 CodeOrbit（清理历史「CodeOrbit Runtime」混用）
+                    RuntimeProduct = SanitizeCodeOrbitProduct(version.Product);
                     CurrentVersion = version.Version;
                     RuntimeConnectionStatus = $"CodeOrbit 已连接 {RuntimeVersion}";
                     RuntimeStatusColor = System.Windows.Media.Brushes.ForestGreen;
+                    OnPropertyChanged(nameof(CodeOrbitStatusHelp));
                 });
             }
             else
@@ -911,6 +1075,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                 {
                     RuntimeConnectionStatus = "CodeOrbit 未连接";
                     RuntimeStatusColor = System.Windows.Media.Brushes.Gray;
+                    RuntimeVersion = "";
+                    OnPropertyChanged(nameof(CodeOrbitStatusHelp));
                 });
             }
         }
@@ -920,36 +1086,290 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             {
                 RuntimeConnectionStatus = "CodeOrbit 未连接";
                 RuntimeStatusColor = System.Windows.Media.Brushes.Gray;
+                RuntimeVersion = "";
+                OnPropertyChanged(nameof(CodeOrbitStatusHelp));
             });
         }
     }
 
-    private async Task LoadSourcesAsync()
+    /// <summary>重连后由 App 替换 source service 引用。</summary>
+    public void ReplaceSourceService(IWpfSourceService sourceService)
     {
-        var loadGen = Interlocked.Increment(ref _wslLoadGeneration);
+        _sourceService = sourceService ?? new UnavailableWpfSourceService();
+        _ = LoadRuntimeStatusAsync();
+        _ = LoadWindowsSourcesAsync();
+    }
+
+    private void SyncApiTokenPasswordBox()
+    {
+        if (ApiTokenPasswordBox == null)
+            return;
+
+        if (string.Equals(ApiTokenPasswordBox.Password, _apiToken, StringComparison.Ordinal))
+            return;
+
+        _suppressTokenPasswordSync = true;
         try
         {
-            // Windows sources first — never block UI on WSL (wsl.exe can hang for seconds).
-            var sources = await Task.Run(() => _sourceService.GetSources()).ConfigureAwait(false);
-            if (loadGen != _wslLoadGeneration)
+            ApiTokenPasswordBox.Password = _apiToken;
+            _apiTokenPasswordBoxInitialized = true;
+        }
+        finally
+        {
+            _suppressTokenPasswordSync = false;
+        }
+    }
+
+    private void ApiTokenPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressTokenPasswordSync)
+            return;
+        if (sender is not PasswordBox box)
+            return;
+        // 首次 Loaded 同步时不回写
+        if (!_apiTokenPasswordBoxInitialized)
+            return;
+
+        ApiToken = box.Password;
+    }
+
+    private void ToggleTokenVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        ShowApiToken = !ShowApiToken;
+    }
+
+    private void CopyApiToken_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(ApiToken))
+            {
+                FeedbackText = "Token 为空，无法复制";
                 return;
+            }
+
+            System.Windows.Clipboard.SetText(ApiToken);
+            FeedbackText = "Token 已复制到剪贴板";
+        }
+        catch
+        {
+            FeedbackText = "复制 Token 失败";
+        }
+    }
+
+    private void RegenerateApiToken_Click(object sender, RoutedEventArgs e)
+    {
+        var token = WpfLocalApiTokenStore.RegenerateToken(_settings);
+        _apiToken = token;
+        OnPropertyChanged(nameof(ApiToken));
+        SyncApiTokenPasswordBox();
+        FeedbackText = "已重新生成 Token（需点「应用并重连」生效）";
+        CodeOrbitReconnectFeedback = "Token 已更新，点击「应用并重连」使连接生效。";
+    }
+
+    private async void ApplyAndReconnectCodeOrbit_Click(object sender, RoutedEventArgs e)
+    {
+        if (CodeOrbitReconnectBusy)
+            return;
+
+        if (!TryValidateCodeOrbitSettings(out var host, out var port, out var token, out var error))
+        {
+            CodeOrbitReconnectFeedback = error;
+            FeedbackText = error;
+            return;
+        }
+
+        // 确认最终写入（字段可能处于非法中间态）
+        _settings.Set(
+            "runtime_launch_mode",
+            ManagedLaunchEnabled ? WpfRuntimeProcessManager.ManagedMode : WpfRuntimeProcessManager.ExternalMode);
+        _settings.Set("api_bind_host", host);
+        _settings.Set("api_port", port);
+        _settings.Set("api_token", token);
+        _apiBindHost = host;
+        _apiPortText = port.ToString(CultureInfo.InvariantCulture);
+        _apiToken = token;
+        OnPropertyChanged(nameof(ApiBindHost));
+        OnPropertyChanged(nameof(ApiPortText));
+        OnPropertyChanged(nameof(ApiToken));
+        OnPropertyChanged(nameof(ShowWildcardHostWarning));
+        SyncApiTokenPasswordBox();
+
+        if (CodeOrbitReconnectRequested == null)
+        {
+            CodeOrbitReconnectFeedback = "重连服务不可用，请重启应用使设置生效";
+            FeedbackText = CodeOrbitReconnectFeedback;
+            return;
+        }
+
+        CodeOrbitReconnectBusy = true;
+        RuntimeConnectionStatus = "CodeOrbit 重连中...";
+        RuntimeStatusColor = System.Windows.Media.Brushes.Goldenrod;
+        CodeOrbitReconnectFeedback = "正在应用设置并重连…";
+        FeedbackText = CodeOrbitReconnectFeedback;
+
+        try
+        {
+            var (success, message) = await CodeOrbitReconnectRequested().ConfigureAwait(true);
+            CodeOrbitReconnectFeedback = message;
+            FeedbackText = message;
+            await LoadRuntimeStatusAsync().ConfigureAwait(true);
+            if (!success && string.Equals(RuntimeConnectionStatus, "CodeOrbit 重连中...", StringComparison.Ordinal))
+            {
+                RuntimeConnectionStatus = "CodeOrbit 未连接";
+                RuntimeStatusColor = System.Windows.Media.Brushes.Gray;
+            }
+        }
+        catch (Exception ex)
+        {
+            CodeOrbitReconnectFeedback = $"重连失败：{ex.Message}";
+            FeedbackText = CodeOrbitReconnectFeedback;
+            RuntimeConnectionStatus = "CodeOrbit 未连接";
+            RuntimeStatusColor = System.Windows.Media.Brushes.Gray;
+        }
+        finally
+        {
+            CodeOrbitReconnectBusy = false;
+        }
+    }
+
+    private bool TryValidateCodeOrbitSettings(out string host, out int port, out string token, out string error)
+    {
+        host = NormalizeBindHostInput(ApiBindHost);
+        token = (ApiToken ?? "").Trim();
+        port = 0;
+        error = "";
+
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            error = "绑定地址不能为空";
+            return false;
+        }
+
+        if (!int.TryParse(ApiPortText, NumberStyles.Integer, CultureInfo.InvariantCulture, out port))
+        {
+            error = "端口必须是数字";
+            return false;
+        }
+
+        if (port is < 1024 or > 65535)
+        {
+            error = "端口范围为 1024–65535";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            error = "Token 不能为空，可点击「重新生成」";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string NormalizeBindHostInput(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return "127.0.0.1";
+        var value = host.Trim();
+        return value is "*" or "+" ? "0.0.0.0" : value;
+    }
+
+    private static bool IsWildcardHost(string host) =>
+        host is "0.0.0.0" or "::" or "*" or "+";
+
+    /// <summary>
+    /// 只刷新 Windows 侧 source 列表，不调用任何会执行 wsl.exe 的接口。
+    /// </summary>
+    private async Task LoadWindowsSourcesAsync()
+    {
+        try
+        {
+            var sources = await Task.Run(() => _sourceService.GetSources()).ConfigureAwait(false);
+            var needWslStatusRefresh = false;
 
             await Dispatcher.InvokeAsync(() =>
             {
+                // 保留已有 WSL 态，避免 Windows 连接后整表重建把按钮状态冲掉。
+                var previousWsl = Sources.ToDictionary(
+                    s => s.Id,
+                    s => (s.WslInstalled, s.WslAvailable, s.SelectedDistro),
+                    StringComparer.OrdinalIgnoreCase);
+
                 Sources.Clear();
                 foreach (var dto in sources)
                 {
-                    Sources.Add(new SourceViewModel(dto)
+                    var vm = new SourceViewModel(dto)
                     {
                         WslAvailable = false,
                         WslInstalled = false,
                         SelectedDistro = null
-                    });
+                    };
+
+                    if (previousWsl.TryGetValue(dto.Id, out var wsl))
+                    {
+                        vm.WslInstalled = wsl.WslInstalled;
+                        vm.WslAvailable = wsl.WslAvailable;
+                        vm.SelectedDistro = wsl.SelectedDistro;
+                    }
+                    else if (_wslMetadataLoaded)
+                    {
+                        vm.WslAvailable = WslAvailable;
+                        vm.SelectedDistro = SelectedWslDistro;
+                    }
+
+                    Sources.Add(vm);
                 }
+
                 SourcesLoaded = Sources.Count > 0;
-                WslAvailable = false;
+                needWslStatusRefresh = _wslMetadataLoaded && WslAvailable;
             });
 
+            // Windows 列表晚于 WSL 元数据完成时，补一次状态探测（不重拉 distro 列表）。
+            if (needWslStatusRefresh)
+                await RefreshWslStatusesAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                SourcesLoaded = false;
+                FeedbackText = "工具列表加载失败：CodeOrbit 未连接";
+            });
+        }
+    }
+
+    /// <summary>
+    /// 首次打开 WSL 发行版下拉或点击「WSL 连接」时，再拉发行版列表 + 各 source 的 WSL 状态。
+    /// </summary>
+    private async Task EnsureWslMetadataLoadedAsync()
+    {
+        if (_wslMetadataLoaded || _wslMetadataLoading)
+            return;
+
+        _wslMetadataLoading = true;
+        try
+        {
+            // 构造函数里 Windows 列表可能仍在加载；先保证有 source 再探 WSL status。
+            var hasSources = false;
+            await Dispatcher.InvokeAsync(() => hasSources = Sources.Count > 0);
+            if (!hasSources)
+                await LoadWindowsSourcesAsync().ConfigureAwait(false);
+
+            await LoadWslMetadataAsync().ConfigureAwait(false);
+            _wslMetadataLoaded = true;
+        }
+        finally
+        {
+            _wslMetadataLoading = false;
+        }
+    }
+
+    private async Task LoadWslMetadataAsync()
+    {
+        var loadGen = Interlocked.Increment(ref _wslLoadGeneration);
+        try
+        {
             // Distro list only; per-source status is best-effort and timed out separately.
             var listResult = await RunWithTimeoutAsync(
                 () =>
@@ -1040,9 +1460,9 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                 return;
             await Dispatcher.InvokeAsync(() =>
             {
-                SourcesLoaded = false;
                 WslAvailable = false;
-                FeedbackText = "工具列表加载失败：Runtime 未连接";
+                foreach (var vm in Sources)
+                    vm.WslAvailable = false;
             });
         }
     }
@@ -1138,15 +1558,32 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                     ? _sourceService.Uninstall(sourceId)
                     : _sourceService.Install(sourceId)).ConfigureAwait(true);
 
-            FeedbackText = result.Success
-                ? $"{displayName} 已{(wasInstalled ? "断开" : "连接")}"
-                : BuildOperationFailureText(displayName, wasInstalled, result.Message, result.Code);
+            if (result.Success)
+            {
+                // 本地更新 Windows 连接态，绝不走整表刷新（旧逻辑会顺带 ListWslDistros / wsl/status）。
+                var installed = result.Installed;
+                try
+                {
+                    var status = await Task.Run(() => _sourceService.GetSourceStatus(sourceId)).ConfigureAwait(true);
+                    if (status.Supported)
+                        installed = status.Installed;
+                }
+                catch
+                {
+                    // 忽略 status 失败，回退到 install/uninstall 返回值。
+                }
 
-            await LoadSourcesAsync().ConfigureAwait(true);
+                vm.SetInstalled(installed);
+                FeedbackText = $"{displayName} 已{(wasInstalled ? "断开" : "连接")}";
+            }
+            else
+            {
+                FeedbackText = BuildOperationFailureText(displayName, wasInstalled, result.Message, result.Code);
+            }
         }
         catch
         {
-            FeedbackText = $"{displayName} 操作失败：Runtime 未连接";
+            FeedbackText = $"{displayName} 操作失败：CodeOrbit 未连接";
         }
         finally
         {
@@ -1154,24 +1591,37 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private async void WslDistroComboBox_DropDownOpened(object sender, EventArgs e)
+    {
+        // 下拉打开时再探测 WSL，避免仅浏览 Windows 连接时唤醒发行版。
+        await EnsureWslMetadataLoadedAsync().ConfigureAwait(true);
+    }
+
     private async void WslSourceToggle_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not System.Windows.Controls.Button button || button.Tag is not SourceViewModel vm)
             return;
-        if (string.IsNullOrWhiteSpace(SelectedWslDistro))
-        {
-            FeedbackText = "未选择 WSL 发行版";
-            return;
-        }
 
         vm.IsWslOperating = true;
         var displayName = vm.DisplayName;
-        var distro = SelectedWslDistro;
-        var wasInstalled = vm.WslInstalled;
         var sourceId = vm.Id;
 
         try
         {
+            // 首次 WSL 操作才 list/status；Windows「连接」不会走到这里。
+            await EnsureWslMetadataLoadedAsync().ConfigureAwait(true);
+
+            if (string.IsNullOrWhiteSpace(SelectedWslDistro))
+            {
+                FeedbackText = WslAvailable
+                    ? "未选择 WSL 发行版"
+                    : "WSL 不可用：未检测到用户侧发行版或 CodeOrbit 无法访问 wsl.exe";
+                return;
+            }
+
+            var distro = SelectedWslDistro;
+            var wasInstalled = vm.WslInstalled;
+
             var result = await RunWithTimeoutAsync(
                 () => wasInstalled
                     ? _sourceService.UninstallWsl(sourceId, distro)
@@ -1199,7 +1649,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         }
         catch
         {
-            FeedbackText = $"{displayName} WSL 操作失败：Runtime 未连接";
+            FeedbackText = $"{displayName} WSL 操作失败：CodeOrbit 未连接";
         }
         finally
         {
@@ -1223,11 +1673,39 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// 将 /api/version 的 product 字段规范为用户可见的 CodeOrbit 产品名。
+    /// </summary>
+    private static string SanitizeCodeOrbitProduct(string? product)
+    {
+        if (string.IsNullOrWhiteSpace(product))
+            return "CodeOrbit";
+
+        var trimmed = product.Trim();
+        if (string.Equals(trimmed, "CodeOrbit Runtime", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(trimmed, "CodeIsland Runtime", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(trimmed, "Runtime", StringComparison.OrdinalIgnoreCase))
+            return "CodeOrbit";
+
+        // 历史混用：xxx Runtime → 去掉尾部 Runtime 产品后缀
+        if (trimmed.EndsWith(" Runtime", StringComparison.OrdinalIgnoreCase))
+        {
+            var withoutSuffix = trimmed[..^" Runtime".Length].TrimEnd();
+            if (string.Equals(withoutSuffix, "CodeOrbit", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(withoutSuffix, "CodeIsland", StringComparison.OrdinalIgnoreCase))
+                return "CodeOrbit";
+        }
+
+        return trimmed;
+    }
+
     private static string BuildOperationFailureText(string displayName, bool wasInstalled, string? message, string? code = null)
     {
         var operationText = wasInstalled ? "断开" : "连接";
-        if (!string.IsNullOrWhiteSpace(message) && message.Contains("Runtime", StringComparison.OrdinalIgnoreCase))
-            return $"{displayName} {operationText}失败：Runtime 未连接";
+        if (!string.IsNullOrWhiteSpace(message) &&
+            (message.Contains("CodeOrbit", StringComparison.OrdinalIgnoreCase) ||
+             message.Contains("Runtime", StringComparison.OrdinalIgnoreCase)))
+            return $"{displayName} {operationText}失败：CodeOrbit 未连接";
         return FormatSourceError($"{displayName} {operationText}失败", message, code);
     }
 

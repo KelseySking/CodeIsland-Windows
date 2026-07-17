@@ -6,7 +6,7 @@
 
 > 不切换窗口，就能实时看到 AI 编程代理在做什么。
 
-CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源项目 [CodeIsland](https://github.com/wxtsky/CodeIsland) 实现的 Windows 版本，以桌面 HUD 浮窗形式呈现。当前通过内置 CodeOrbit Runtime 支持多种 AI 编程工具，通过 Hook 机制监听实时事件，在屏幕顶部展示会话状态、权限审批、问答交互和最近任务细节。
+CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源项目 [CodeIsland](https://github.com/wxtsky/CodeIsland) 实现的 Windows 版本，以桌面 HUD 浮窗形式呈现。当前通过内置 [CodeOrbit](https://github.com/KelseySking/CodeOrbit-Rust) 支持多种 AI 编程工具，通过 Hook 机制监听实时事件，在屏幕顶部展示会话状态、权限审批、问答交互和最近任务细节。
 
 项目仓库：https://github.com/KelseySking/CodeIsland-Windows
 
@@ -26,7 +26,7 @@ CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源�
 
 ## 功能特性
 
-- **AI 代理实时监控** — 通过 CodeOrbit Runtime 的工具插件支持多种 AI 编程工具
+- **AI 代理实时监控** — 通过 CodeOrbit 的工具插件支持多种 AI 编程工具
 - **桌面 HUD 浮窗** — 顶部/侧边/底部悬浮展示，折叠与展开自动切换，不抢焦点
 - **会话列表与详情** — 实时查看运行状态、当前工具、最近消息、完成摘要和任务详情
 - **权限审批** — 直接在面板上批准或拒绝工具权限请求，支持全局快捷键操作
@@ -50,12 +50,12 @@ CodeIsland 是一个 **AI 编程代理状态面板**。本项目是基于开源�
 
 ## 架构
 
-CodeIsland for Windows 是一个纯**展示客户端**（HUD），通过 REST 和 WebSocket API 连接内嵌的 [CodeOrbit Runtime](https://github.com/KelseySking/CodeOrbit-Rust)。Runtime 负责 Hook 事件接收、状态聚合和会话管理；WPF 应用仅负责 UI 渲染和用户交互。
+CodeIsland for Windows 是一个纯**展示客户端**（HUD），通过 REST 和 WebSocket API 连接内嵌的 [CodeOrbit](https://github.com/KelseySking/CodeOrbit-Rust)。CodeOrbit 负责 Hook 事件接收、状态聚合和会话管理；WPF 应用仅负责 UI 渲染和用户交互。
 
 
 ```text
 ┌──────────────────────┐         ┌─────────────────────────┐
-│ CodeOrbit Runtime    │◄────────│ CodeIsland-Windows      │
+│ CodeOrbit            │◄────────│ CodeIsland-Windows      │
 │ (内嵌，自动启动)      │  REST   │ (纯展示客户端)           │
 │                      │  +WS    │                         │
 │ Hook 事件 → 状态     │         │ UI：HUD、审批、          │
@@ -67,16 +67,17 @@ CodeIsland for Windows 是一个纯**展示客户端**（HUD），通过 REST �
 
 ```text
 src/
-├── CodeIsland.Contracts/     # API DTO 契约（与 CodeOrbit Runtime 对齐）
+├── CodeIsland.Contracts/     # API DTO 契约（与 CodeOrbit 对齐）
 └── CodeIsland.WpfApp/        # WPF 展示客户端
     ├── ViewModels/           # 应用状态与 HUD 视图模型
     ├── Views/                # HUD、会话列表、审批、问答、详情、设置
-    ├── Services/             # Runtime API 客户端、进程管理、终端、快捷键、更新
+    ├── Services/             # CodeOrbit API 客户端、进程管理、终端、快捷键、更新
     └── Assets/               # 图标、音效
 scripts/                      # 构建、发布、打包脚本
 samples/
-└── external-display-console/ # 示例：连接 Runtime API
+└── external-display-console/ # 示例：连接 CodeOrbit API
 ```
+
 
 ## 快速开始
 
@@ -102,10 +103,10 @@ dotnet run --project src/CodeIsland.WpfApp
 
 ### 发布与打包
 
-内嵌 Runtime 默认来自仓库中的 `external/CodeOrbit`，版本由 `external/CodeOrbit/runtime-pin.json` 钉死（当前为 CodeOrbit-Rust **v0.1.3**，含增强 WSL source API）。
+内嵌 CodeOrbit 默认来自仓库中的 `external/CodeOrbit`，版本由 `external/CodeOrbit/runtime-pin.json` 钉死（当前为 CodeOrbit-Rust **v0.1.3**，含增强 WSL source API）。pin/路径名 `runtime-pin.json` 为历史兼容名，可保留。
 
 ```powershell
-# 按 pin 从 GitHub 同步 Runtime（默认可复现）
+# 按 pin 从 GitHub 同步 CodeOrbit（默认可复现）
 .\scripts\sync-codeorbit-runtime.ps1
 
 # 可选：同步最新 release（会写回 pin）
@@ -114,14 +115,14 @@ dotnet run --project src/CodeIsland.WpfApp
 # 单文件自包含发布
 .\scripts\publish-single-file.ps1
 
-# 发布 ZIP（可选打包前同步 Runtime）
+# 发布 ZIP（可选打包前同步 CodeOrbit；-SyncRuntime 为脚本参数名）
 .\scripts\create-release-zip.ps1
 .\scripts\create-release-zip.ps1 -SyncRuntime
 
 # Windows 安装程序（需安装 Inno Setup 6）
 .\scripts\create-installer.ps1
 .\scripts\create-installer.ps1 -SyncRuntime
-# 强制最新 Runtime 再打包：
+# 强制最新 CodeOrbit 再打包：
 # .\scripts\create-installer.ps1 -SyncRuntime -LatestRuntime
 ```
 
@@ -132,7 +133,7 @@ dotnet run --project src/CodeIsland.WpfApp
 - **Windows**：在当前 Windows 用户配置中安装/卸载 hook
 - **WSL**（检测到发行版时显示）：选择发行版后单独安装/卸载 WSL 内 hook；hook 经 WSL interop 调用 Windows 侧 `codeorbit-bridge.exe`，与 Windows 连接状态相互独立
 
-工具列表由内置 CodeOrbit Runtime 插件提供。WSL 列表与状态在后台加载并带超时，避免阻塞设置页。后续 Runtime 更新可以新增或更新工具集成，而不需要修改展示客户端。
+工具列表由内置 CodeOrbit 插件提供。WSL 列表与状态在后台加载并带超时，避免阻塞设置页。后续 CodeOrbit 更新可以新增或更新工具集成，而不需要修改展示客户端。
 
 | 工具 | 状态 |
 
@@ -156,6 +157,10 @@ dotnet run --project src/CodeIsland.WpfApp
 | StepFun | 已适配 |
 | Trae | 已适配 |
 | WorkBuddy | 已适配 |
+
+## 命名说明
+
+基座产品名为 **CodeOrbit**（历史曾称 Runtime）。用户可见文案请统一使用 CodeOrbit；类型名/路径中的 `runtime` 多为兼容保留。详见 [docs/naming-codeorbit.md](docs/naming-codeorbit.md)。
 
 ## 配置
 

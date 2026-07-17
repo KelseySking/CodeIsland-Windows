@@ -13,7 +13,7 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(2);
-    private const string RuntimeUnavailableMessage = "Runtime is not connected";
+    private const string RuntimeUnavailableMessage = "CodeOrbit is not connected";
     private readonly HttpClient _http;
     private readonly string _baseUrl;
     private readonly string _token;

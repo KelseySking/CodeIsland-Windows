@@ -121,6 +121,7 @@
             <ListBoxItem Tag="appearance" Content="外观" />
             <ListBoxItem Tag="hotkeys" Content="快捷键" />
             <ListBoxItem Tag="tools" Content="工具连接" />
+            <ListBoxItem Tag="codeorbit" Content="CodeOrbit" />
             <ListBoxItem Tag="about" Content="关于" />
           </ListBox>
         </Border>
@@ -482,8 +483,7 @@
               <StackPanel>
                 <TextBlock Text="工具连接" Style="{StaticResource SettingsSectionTitleStyle}" />
 
-                <Border Style="{StaticResource SettingsCardStyle}"
-                        Visibility="{Binding WslAvailable, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                <Border Style="{StaticResource SettingsCardStyle}">
                   <Grid>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*" />
@@ -491,7 +491,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="WSL 发行版" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="在所选发行版内安装/卸载 hook（与 Windows 连接独立）。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="在所选发行版内安装/卸载 hook（与 Windows 连接独立）。首次打开下拉或点击「WSL 连接」时才会探测 WSL。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <ComboBox Grid.Column="1"
                               MinWidth="180"
@@ -499,7 +499,8 @@
                               ItemsSource="{Binding WslDistros}"
                               DisplayMemberPath="Label"
                               SelectedValuePath="Name"
-                              SelectedValue="{Binding SelectedWslDistro, Mode=TwoWay}" />
+                              SelectedValue="{Binding SelectedWslDistro, Mode=TwoWay}"
+                              DropDownOpened="WslDistroComboBox_DropDownOpened" />
                   </Grid>
                 </Border>
 
@@ -563,7 +564,7 @@
                                     Click="WslSourceToggle_Click"
                                     Padding="12,7"
                                     VerticalAlignment="Center"
-                                    Visibility="{Binding WslAvailable, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+                                    ToolTip="在 WSL 发行版内安装/卸载 hook（与 Windows 连接独立；首次会探测 WSL）" />
                           </StackPanel>
                         </Grid>
                       </Border>
@@ -573,7 +574,150 @@
               </StackPanel>
             </ScrollViewer>
 
-            <!-- 关于（含 CodeOrbit） -->
+            <!-- CodeOrbit -->
+            <ScrollViewer x:Name="SectionCodeOrbit"
+                          Visibility="Collapsed"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+              <StackPanel>
+                <TextBlock Text="CodeOrbit 连接" Style="{StaticResource SettingsSectionTitleStyle}" />
+
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Ellipse Width="10" Height="10" Fill="{Binding RuntimeStatusColor}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Text="{Binding RuntimeConnectionStatus}" Style="{StaticResource SettingsLabelStyle}" />
+                      <TextBlock Text="{Binding CodeOrbitStatusHelp}" Style="{StaticResource SettingsHelpStyle}" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                      <TextBlock Text="由本程序启动 CodeOrbit" Style="{StaticResource SettingsLabelStyle}" />
+                      <TextBlock Text="开启后由 CodeIsland 托管启动本地 CodeOrbit；关闭后仅连接已有实例，不自动拉起。" Style="{StaticResource SettingsHelpStyle}" />
+                    </StackPanel>
+                    <CheckBox Grid.Column="1"
+                              Style="{StaticResource SettingsToggleStyle}"
+                              IsChecked="{Binding ManagedLaunchEnabled, Mode=TwoWay}" />
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="240" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                      <TextBlock Text="绑定地址" Style="{StaticResource SettingsLabelStyle}" />
+                      <TextBlock Text="默认 127.0.0.1。填 0.0.0.0 时本机连接仍走 127.0.0.1；退出 HUD 不一定关闭共享实例。" Style="{StaticResource SettingsHelpStyle}" />
+                    </StackPanel>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding ApiBindHost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             MinHeight="34"
+                             VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+
+                <Border x:Name="WildcardHostWarningCard"
+                        Style="{StaticResource SettingsWarningCardStyle}"
+                        Visibility="{Binding ShowWildcardHostWarning, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                  <StackPanel>
+                    <TextBlock Text="共享绑定警告" Style="{StaticResource SettingsLabelStyle}" Foreground="#FFFFB4AF" />
+                    <TextBlock Text="0.0.0.0 / 通配地址表示对外共享监听。本机仍通过 127.0.0.1 连接；退出 CodeIsland 时不会强制关闭该共享实例。" Style="{StaticResource SettingsHelpStyle}" Foreground="#CCFFB4AF" />
+                  </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="180" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                      <TextBlock Text="端口" Style="{StaticResource SettingsLabelStyle}" />
+                      <TextBlock Text="有效范围 1024–65535，默认 32145。" Style="{StaticResource SettingsHelpStyle}" />
+                    </StackPanel>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding ApiPortText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             MinHeight="34"
+                             VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <StackPanel>
+                    <TextBlock Text="API Token" Style="{StaticResource SettingsLabelStyle}" />
+                    <TextBlock Text="用于鉴权的 Bearer Token。请勿分享到公开渠道；日志不会记录明文。" Style="{StaticResource SettingsHelpStyle}" />
+                    <Grid Margin="0,10,0,0">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBox x:Name="ApiTokenTextBox"
+                               Text="{Binding ApiToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                               MinHeight="34"
+                               VerticalAlignment="Center"
+                               FontFamily="Consolas"
+                               Visibility="{Binding ShowApiToken, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+                      <PasswordBox x:Name="ApiTokenPasswordBox"
+                                   MinHeight="34"
+                                   VerticalAlignment="Center"
+                                   FontFamily="Consolas"
+                                   PasswordChanged="ApiTokenPasswordBox_PasswordChanged"
+                                   Visibility="{Binding ShowApiToken, Converter={x:Static views:InverseBoolVisibilityConverter.Instance}}" />
+                      <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                        <Button Content="{Binding TokenVisibilityLabel}"
+                                Click="ToggleTokenVisibility_Click"
+                                MinWidth="72"
+                                Margin="0,0,6,0" />
+                        <Button Content="复制"
+                                Click="CopyApiToken_Click"
+                                MinWidth="64"
+                                Margin="0,0,6,0" />
+                        <Button Content="重新生成"
+                                Click="RegenerateApiToken_Click"
+                                MinWidth="80" />
+                      </StackPanel>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="应用并重连" Style="{StaticResource SettingsLabelStyle}" />
+                      <TextBlock Text="{Binding CodeOrbitReconnectFeedback}" Style="{StaticResource SettingsHelpStyle}" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Content="{Binding CodeOrbitReconnectButtonLabel}"
+                            Click="ApplyAndReconnectCodeOrbit_Click"
+                            IsEnabled="{Binding CodeOrbitReconnectEnabled}"
+                            MinWidth="120"
+                            Padding="16,8"
+                            VerticalAlignment="Center"
+                            Background="#228EE6D0"
+                            BorderBrush="#668EE6D0" />
+                  </Grid>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+
+            <!-- 关于（含 CodeOrbit 版本） -->
             <ScrollViewer x:Name="SectionAbout"
                           Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto"
@@ -581,7 +725,7 @@
               <StackPanel>
                 <views:AboutView Margin="0,0,0,8" />
 
-                <TextBlock Text="CodeOrbit Runtime" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0,8,0,10" />
+                <TextBlock Text="CodeOrbit" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0,8,0,10" />
 
                 <Border Style="{StaticResource SettingsCardStyle}">
                   <StackPanel>

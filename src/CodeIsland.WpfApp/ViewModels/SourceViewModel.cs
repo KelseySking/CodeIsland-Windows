@@ -40,6 +40,16 @@ public sealed class SourceViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(DisplayName));
     }
 
+    /// <summary>仅更新 Windows 侧已连接状态（不改图标/显示名）。</summary>
+    public void SetInstalled(bool installed)
+    {
+        if (_dto.Installed == installed)
+            return;
+        _dto = _dto with { Installed = installed };
+        OnPropertyChanged(nameof(Installed));
+        OnPropertyChanged(nameof(ButtonContent));
+    }
+
     public bool IsOperating
     {
         get => _isOperating;
@@ -102,7 +112,10 @@ public sealed class SourceViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool WslButtonEnabled => !IsWslOperating && WslAvailable;
+    /// <summary>
+    /// WSL 按钮始终可点以触发懒加载；加载中仅靠 IsWslOperating 禁用。
+    /// </summary>
+    public bool WslButtonEnabled => !IsWslOperating;
 
     private static string GetFallbackText(string displayName)
     {

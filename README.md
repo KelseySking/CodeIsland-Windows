@@ -8,7 +8,7 @@
 
 [中文版本](README_CN.md)
 
-CodeIsland is an **AI coding agent status panel** for Windows. Inspired by the macOS open-source project [CodeIsland](https://github.com/wxtsky/CodeIsland), the Windows version is presented as a desktop HUD floating window. It supports multiple AI coding tools through the bundled CodeOrbit Runtime, listens to real-time events through the Hook mechanism, and shows session status, permission approvals, Q&A interactions, and recent task details at the top of the screen.
+CodeIsland is an **AI coding agent status panel** for Windows. Inspired by the macOS open-source project [CodeIsland](https://github.com/wxtsky/CodeIsland), the Windows version is presented as a desktop HUD floating window. It supports multiple AI coding tools through the bundled [CodeOrbit](https://github.com/KelseySking/CodeOrbit-Rust), listens to real-time events through the Hook mechanism, and shows session status, permission approvals, Q&A interactions, and recent task details at the top of the screen.
 
 Project repository: https://github.com/KelseySking/CodeIsland-Windows
 
@@ -28,7 +28,7 @@ Project repository: https://github.com/KelseySking/CodeIsland-Windows
 
 ## Features
 
-- **Real-time agent monitoring** — Supports multiple AI coding tools through CodeOrbit Runtime source plugins
+- **Real-time agent monitoring** — Supports multiple AI coding tools through CodeOrbit source plugins
 - **Desktop HUD floating window** — Floating display at the top, side, or bottom of the screen, with automatic collapsed/expanded switching and no focus stealing
 - **Session list and details** — View running status, current tool, recent messages, completion summaries, and task details in real time
 - **Permission approvals** — Approve or deny tool permission requests directly from the panel, with global hotkey support
@@ -52,12 +52,12 @@ Project repository: https://github.com/KelseySking/CodeIsland-Windows
 
 ## Architecture
 
-CodeIsland for Windows is a pure **display client** (HUD). It connects to a bundled [CodeOrbit Runtime](https://github.com/KelseySking/CodeOrbit-Rust) via REST and WebSocket APIs. The Runtime handles Hook event reception, state aggregation, and session management; the WPF app only handles UI rendering and user interaction.
+CodeIsland for Windows is a pure **display client** (HUD). It connects to a bundled [CodeOrbit](https://github.com/KelseySking/CodeOrbit-Rust) via REST and WebSocket APIs. CodeOrbit handles Hook event reception, state aggregation, and session management; the WPF app only handles UI rendering and user interaction.
 
 
 ```text
 ┌──────────────────────┐         ┌─────────────────────────┐
-│ CodeOrbit Runtime    │◄────────│ CodeIsland-Windows      │
+│ CodeOrbit            │◄────────│ CodeIsland-Windows      │
 │ (bundled, auto-start)│  REST   │ (Pure Display Client)   │
 │                      │  +WS    │                         │
 │ Hook events → State  │         │ UI: HUD, approvals,     │
@@ -69,15 +69,15 @@ CodeIsland for Windows is a pure **display client** (HUD). It connects to a bund
 
 ```text
 src/
-├── CodeIsland.Contracts/     # API DTO contracts (aligned with CodeOrbit Runtime)
+├── CodeIsland.Contracts/     # API DTO contracts (aligned with CodeOrbit)
 └── CodeIsland.WpfApp/        # WPF display client
     ├── ViewModels/           # App state and HUD view models
     ├── Views/                # HUD, session list, approvals, Q&A, details, settings
-    ├── Services/             # Runtime API client, process manager, terminal, hotkeys, updates
+    ├── Services/             # CodeOrbit API client, process manager, terminal, hotkeys, updates
     └── Assets/               # Icons and sound effects
 scripts/                      # Build, publish, and packaging scripts
 samples/
-└── external-display-console/ # Example: connecting to Runtime API
+└── external-display-console/ # Example: connecting to CodeOrbit API
 ```
 
 ## Quick Start
@@ -104,10 +104,10 @@ After startup, the HUD floating window is shown and a CodeIsland icon appears in
 
 ### Publish & Package
 
-The bundled Runtime lives in `external/CodeOrbit`, pinned by `external/CodeOrbit/runtime-pin.json` (currently CodeOrbit-Rust **v0.1.3**, which includes enriched WSL source APIs).
+Bundled CodeOrbit lives in `external/CodeOrbit`, pinned by `external/CodeOrbit/runtime-pin.json` (currently CodeOrbit-Rust **v0.1.3**, which includes enriched WSL source APIs). The pin/path name `runtime-pin.json` is historical and kept for packaging compatibility.
 
 ```powershell
-# Sync Runtime from GitHub using the pin (reproducible by default)
+# Sync CodeOrbit from GitHub using the pin (reproducible by default)
 .\scripts\sync-codeorbit-runtime.ps1
 
 # Optional: sync latest release (updates pin)
@@ -116,14 +116,14 @@ The bundled Runtime lives in `external/CodeOrbit`, pinned by `external/CodeOrbit
 # Single-file self-contained build
 .\scripts\publish-single-file.ps1
 
-# Release ZIP (optional Runtime sync before packaging)
+# Release ZIP (optional CodeOrbit sync before packaging; -SyncRuntime is the script flag name)
 .\scripts\create-release-zip.ps1
 .\scripts\create-release-zip.ps1 -SyncRuntime
 
 # Windows installer (requires Inno Setup 6)
 .\scripts\create-installer.ps1
 .\scripts\create-installer.ps1 -SyncRuntime
-# Force latest Runtime when packaging:
+# Force latest CodeOrbit when packaging:
 # .\scripts\create-installer.ps1 -SyncRuntime -LatestRuntime
 ```
 
@@ -134,7 +134,7 @@ Open **Settings > Tool Connections** to connect or disconnect supported tools:
 - **Windows** — install/uninstall hooks in the current Windows user config
 - **WSL** (shown when distributions are detected) — pick a distro and manage WSL hooks separately; hooks call Windows `codeorbit-bridge.exe` via WSL interop and are independent of the Windows connection state
 
-The tool list comes from bundled CodeOrbit Runtime plugins. WSL distro/status loading runs in the background with timeouts so the settings page stays responsive. New Runtime releases can add or update tool integrations without changing the display client.
+The tool list comes from bundled CodeOrbit plugins. WSL distro/status loading runs in the background with timeouts so the settings page stays responsive. New CodeOrbit releases can add or update tool integrations without changing the display client.
 
 | Tool | Status |
 
@@ -158,6 +158,10 @@ The tool list comes from bundled CodeOrbit Runtime plugins. WSL distro/status lo
 | StepFun | Supported |
 | Trae | Supported |
 | WorkBuddy | Supported |
+
+## Naming
+
+The product base is **CodeOrbit** (historically called “Runtime”). Use CodeOrbit in user-facing copy; `runtime` in type/path names is often kept for compatibility. See [docs/naming-codeorbit.md](docs/naming-codeorbit.md).
 
 ## Configuration
 

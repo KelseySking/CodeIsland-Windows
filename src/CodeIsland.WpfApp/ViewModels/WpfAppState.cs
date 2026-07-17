@@ -32,7 +32,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     private readonly SettingsManager _settings;
     private readonly WpfWebhookNotifier? _webhookNotifier;
-    private readonly IWpfRuntimeClient _runtimeClient;
+    private IWpfRuntimeClient _runtimeClient;
     private readonly Dictionary<string, SessionSnapshot> _sessions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, WpfSessionItemViewModel> _sessionItems = new(StringComparer.Ordinal);
     private readonly HashSet<string> _removedHudSessionIds = new(StringComparer.Ordinal);
@@ -78,6 +78,63 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         SelectedSessionJumpToTerminalCommand = new RelayCommand(() => JumpToTerminal(_selectedSessionId));
         _settings.SettingChanged += OnSettingChanged;
         _runtimeClient.StateChanged += OnHubStateChanged;
+    }
+
+    /// <summary>
+    /// 替换 CodeOrbit API 客户端（应用内重连）。退订旧客户端、清空会话/待办投影并订阅新客户端。
+    /// 不负责 Dispose 旧客户端（由 App 编排）。
+    /// </summary>
+    public void ReplaceClient(IWpfRuntimeClient runtimeClient)
+    {
+        ArgumentNullException.ThrowIfNull(runtimeClient);
+
+        void Apply()
+        {
+            if (_disposed)
+                return;
+
+            if (ReferenceEquals(_runtimeClient, runtimeClient))
+                return;
+
+            _runtimeClient.StateChanged -= OnHubStateChanged;
+            _runtimeClient = runtimeClient;
+            _runtimeClient.StateChanged += OnHubStateChanged;
+            ClearRuntimeProjection();
+        }
+
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null && !dispatcher.CheckAccess())
+            dispatcher.Invoke(Apply);
+        else
+            Apply();
+    }
+
+    private void ClearRuntimeProjection()
+    {
+        foreach (var sessionId in _sessions.Keys.ToArray())
+            RemoveHubSessionProjection(sessionId);
+
+        _permissionQueue.Clear();
+        _questionQueue.Clear();
+        _autoApprovingPermissionIds.Clear();
+        _removedHudSessionIds.Clear();
+        _selectedSessionId = null;
+        _selectedHudItemId = null;
+        _selectedPendingActionId = null;
+        _selectedPendingActionKind = null;
+        _pendingActionRevision++;
+        QuestionAnswer = "";
+
+        // 会话清空后务必停掉定时器，避免重连窗口期回调读到旧投影
+        _completionTimer?.Dispose();
+        _completionTimer = null;
+        _completionSessionId = null;
+        StopSelectedSessionTranscriptRefresh();
+
+        RefreshQuestionOptions();
+        if (SurfaceKind != WpfHudSurfaceKind.Collapsed)
+            SurfaceKind = WpfHudSurfaceKind.Collapsed;
+        RefreshAll();
     }
 
     public void BeginHudVisualUpdateDeferral()
