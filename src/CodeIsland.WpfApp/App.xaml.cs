@@ -9,6 +9,9 @@ namespace CodeIsland.WpfApp;
 
 public partial class App : System.Windows.Application
 {
+    private const string SingleInstanceMutexName = @"Local\CodeIsland-Windows-SingleInstance";
+
+    private Mutex? _singleInstanceMutex;
     private SettingsManager? _settings;
     private WpfRuntimeProcessManager? _runtimeManager;
     private IWpfRuntimeClient? _runtimeClient;
@@ -25,6 +28,17 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (!TryAcquireSingleInstance())
+        {
+            System.Windows.MessageBox.Show(
+                "CodeIsland 已在运行。\n请从托盘图标继续使用，或先退出已运行的实例。",
+                "CodeIsland",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
+
         ConfigureRendering();
         base.OnStartup(e);
 
@@ -99,6 +113,20 @@ public partial class App : System.Windows.Application
                 ["exception"] = ex.GetType().Name
             });
         }
+    }
+
+    private bool TryAcquireSingleInstance()
+    {
+        // ponytail: 命名互斥体足够；跨会话/提权再考虑 Global\\
+        var mutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var createdNew);
+        if (!createdNew)
+        {
+            mutex.Dispose();
+            return false;
+        }
+
+        _singleInstanceMutex = mutex;
+        return true;
     }
 
     private static void ConfigureRendering()
@@ -223,6 +251,21 @@ public partial class App : System.Windows.Application
         _runtimeManager?.Dispose();
         _soundManager?.Dispose();
         _webhookNotifier?.Dispose();
+        if (_singleInstanceMutex != null)
+        {
+            try
+            {
+                _singleInstanceMutex.ReleaseMutex();
+            }
+            catch (ApplicationException)
+            {
+                // 未拥有锁时忽略
+            }
+
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+        }
+
         base.OnExit(e);
     }
 }

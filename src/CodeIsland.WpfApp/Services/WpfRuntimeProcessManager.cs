@@ -38,13 +38,18 @@ public sealed class WpfRuntimeProcessManager : IDisposable
     public async Task EnsureStartedAsync(CancellationToken ct = default)
     {
         var mode = _settings.Get("runtime_launch_mode", ManagedMode);
-        if (!string.Equals(mode, ExternalMode, StringComparison.OrdinalIgnoreCase))
+        var isExternal = string.Equals(mode, ExternalMode, StringComparison.OrdinalIgnoreCase);
+        if (!isExternal)
+        {
+            // Seed first so hook install never pins to a transient repo path under external/CodeOrbit.
+            WpfRuntimeUpdateManager.EnsureSeededFromBundled(_logger);
             await WpfRuntimeUpdateManager.EnsureLatestAsync(_settings, _logger, ct).ConfigureAwait(false);
+        }
 
         if (await IsHealthyAsync(ct).ConfigureAwait(false))
             return;
 
-        if (string.Equals(mode, ExternalMode, StringComparison.OrdinalIgnoreCase))
+        if (isExternal)
         {
             _logger.Write("WpfRuntimeProcessManager", "external-runtime-unhealthy", new Dictionary<string, string?>
             {
@@ -72,14 +77,23 @@ public sealed class WpfRuntimeProcessManager : IDisposable
             ? $" --owner-pid {Environment.ProcessId} --shutdown-when-owner-exits"
             : "";
         var args = $"--settings-dir \"{_settings.SettingsDirectory}\" --host \"{ApiBindHost}\" --port {ApiPort} --token \"{ApiToken}\"{ownerArgs}";
+        var workingDirectory = Path.GetDirectoryName(hostPath) ?? AppContext.BaseDirectory;
+        // Bridge/hook path follows CodeOrbit_RUNTIME_DIR (or host directory). Prefer managed current only when usable.
+        var runtimeDir = PreferManagedHostPath() != null
+            ? WpfRuntimeUpdateManager.CurrentRuntimeDirectory
+            : workingDirectory;
         var startInfo = new ProcessStartInfo
         {
             FileName = hostPath,
             Arguments = args,
             UseShellExecute = false,
             CreateNoWindow = true,
-            WorkingDirectory = Path.GetDirectoryName(hostPath) ?? AppContext.BaseDirectory
+            WorkingDirectory = workingDirectory
         };
+        startInfo.Environment["CodeOrbit_RUNTIME_DIR"] = runtimeDir;
+        var bundledPlugins = Path.Combine(runtimeDir, "bundled-plugins");
+        if (Directory.Exists(bundledPlugins))
+            startInfo.Environment["CodeOrbit_BUNDLED_PLUGINS_DIR"] = bundledPlugins;
 
         _ownedRuntimeProcess = Process.Start(startInfo);
         _logger.Write("WpfRuntimeProcessManager", "runtime-host-started", new Dictionary<string, string?>
@@ -87,6 +101,7 @@ public sealed class WpfRuntimeProcessManager : IDisposable
             ["path"] = hostPath,
             ["pid"] = _ownedRuntimeProcess?.Id.ToString(),
             ["bindHost"] = ApiBindHost,
+            ["runtimeDir"] = runtimeDir,
             ["shutdownWithHud"] = _shutdownOwnedRuntimeOnDispose.ToString()
         });
     }
@@ -121,10 +136,42 @@ public sealed class WpfRuntimeProcessManager : IDisposable
 
     private static string? ResolveRuntimeHostPath()
     {
+        // Always prefer the stable managed runtime so hook install paths stay durable.
+        var preferred = PreferManagedHostPath();
+        if (preferred != null)
+            return preferred;
+
+        foreach (var candidate in EnumerateRuntimeHostCandidates())
+        {
+            if (File.Exists(candidate) && WpfRuntimeUpdateManager.IsPreferredRuntimePath(candidate))
+                return candidate;
+        }
+
         foreach (var candidate in EnumerateRuntimeHostCandidates())
         {
             if (File.Exists(candidate))
                 return candidate;
+        }
+
+        return null;
+    }
+
+    private static string? PreferManagedHostPath()
+    {
+        var managedDir = WpfRuntimeUpdateManager.CurrentRuntimeDirectory;
+        var managedManifest = ReadManifestFile(Path.Combine(managedDir, "runtime-manifest.json"));
+        if (!string.IsNullOrWhiteSpace(managedManifest?.HostExe))
+        {
+            var managedHost = Path.Combine(managedDir, managedManifest.HostExe);
+            if (File.Exists(managedHost))
+                return managedHost;
+        }
+
+        foreach (var hostName in new[] { "codeorbit-host.exe", "CodeOrbit.RuntimeHost.exe", "CodeIsland.RuntimeHost.exe" })
+        {
+            var path = Path.Combine(managedDir, hostName);
+            if (File.Exists(path))
+                return path;
         }
 
         return null;
@@ -156,7 +203,7 @@ public sealed class WpfRuntimeProcessManager : IDisposable
         yield return Path.Combine(baseDir, "runtime", "current", "CodeIsland.RuntimeHost.exe");
         yield return Path.Combine(baseDir, "runtime", "CodeIsland.RuntimeHost.exe");
 
-        // Development paths for CodeOrbit repo
+        // Development paths for CodeOrbit repo (seed source only; launch prefers managed current)
         var current = new DirectoryInfo(baseDir);
         while (current != null)
         {
