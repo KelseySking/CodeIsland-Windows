@@ -589,6 +589,8 @@ public partial class HudWindow : Window
             return false;
         }
 
+        // Content-only updates (new messages while a row stays expanded) should not re-morph the shell.
+        // Still animate real expand (opening list / growing for more rows) and top-anchored shrink.
         return transitionKind == ShellTransitionKind.Expand || IsTopDisplayPosition();
     }
 

@@ -13,6 +13,9 @@ obj/
 *.swp
 *~
 
+## Local build scratch (dotnet -o ./artifacts/...)
+/artifacts/
+
 ## Build results
 [Dd]ebugPublic/
 [Rr]eleases/

@@ -39,6 +39,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private readonly Queue<PendingPermission> _permissionQueue = new();
     private readonly Queue<PendingQuestion> _questionQueue = new();
     private readonly ConcurrentDictionary<string, byte> _autoApprovingPermissionIds = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _notifiedWebhookActionKeys = new(StringComparer.Ordinal);
     private WpfHudSurfaceKind _surfaceKind = WpfHudSurfaceKind.Collapsed;
     private string? _selectedSessionId;
     private string? _selectedHudItemId;
@@ -117,6 +118,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         _permissionQueue.Clear();
         _questionQueue.Clear();
         _autoApprovingPermissionIds.Clear();
+        _notifiedWebhookActionKeys.Clear();
         _removedHudSessionIds.Clear();
         _selectedSessionId = null;
         _selectedHudItemId = null;
@@ -342,6 +344,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         }
 
         ReplacePendingProjection(change.PendingActions);
+        PruneNotifiedWebhookKeys();
         var currentQuestionCursor = GetCurrentQuestionCursor();
         if (!string.Equals(previousQuestionCursor.ActionId, currentQuestionCursor.ActionId, StringComparison.Ordinal) ||
             !string.Equals(previousQuestionCursor.AnswerKey, currentQuestionCursor.AnswerKey, StringComparison.Ordinal))
@@ -377,16 +380,18 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         if (!string.IsNullOrWhiteSpace(change.AffectedSessionId) &&
             _sessions.TryGetValue(change.AffectedSessionId, out var changedSession))
         {
-            _webhookNotifier?.NotifySessionChanged(changedSession);
+            // Only notify status changes for the affected session (not every pending-only event).
+            if (change.Effect is SideEffect.None or SideEffect.PlaySound)
+                _webhookNotifier?.NotifySessionChanged(changedSession);
         }
 
         switch (change.Effect)
         {
             case SideEffect.ShowApprovalCard approval:
-                _webhookNotifier?.NotifyApproval(approval.Request);
+                NotifyWebhookApprovalOnce(change.AffectedActionId, approval.Request);
                 break;
             case SideEffect.ShowQuestionCard question:
-                _webhookNotifier?.NotifyQuestion(question.Question);
+                NotifyWebhookQuestionOnce(change.AffectedActionId, question.Question);
                 QuestionAnswer = "";
                 RefreshQuestionOptions();
                 break;
@@ -926,7 +931,8 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private void RebuildHudListItems()
     {
         var pendingSessionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var items = new List<WpfHudListItemViewModel>();
+        var desired = new List<WpfHudListItemViewModel>();
+        var existingById = HudListItems.ToDictionary(static item => item.ItemId, StringComparer.Ordinal);
 
         foreach (var pending in _permissionQueue)
         {
@@ -934,20 +940,40 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             if (!string.IsNullOrWhiteSpace(pending.Request.SessionId))
                 pendingSessionIds.Add(pending.Request.SessionId);
 
-            items.Add(new WpfHudListItemViewModel(
-                $"permission:{pending.ActionId}",
-                WpfHudListItemKind.Permission,
-                pending.Request.SessionId,
-                "权限请求",
-                GetSessionProjectName(session),
-                BuildPermissionSummary(pending.Request),
-                GetSessionSourceKey(session),
-                GetSessionSourceDisplayName(session),
-                "等待审批",
-                AgentStatus.WaitingApproval,
-                "#FFFFB86B",
-                FormatAge(pending.CreatedAt),
-                OpenHudListItemCommand));
+            var itemId = $"permission:{pending.ActionId}";
+            if (existingById.TryGetValue(itemId, out var existing) && existing.Kind == WpfHudListItemKind.Permission)
+            {
+                existing.UpdateSessionPresentation(
+                    "权限请求",
+                    GetSessionProjectName(session),
+                    BuildPermissionSummary(pending.Request),
+                    GetSessionSourceKey(session),
+                    GetSessionSourceDisplayName(session),
+                    "等待审批",
+                    AgentStatus.WaitingApproval,
+                    "#FFFFB86B",
+                    FormatAge(pending.CreatedAt),
+                    "",
+                    "");
+                desired.Add(existing);
+            }
+            else
+            {
+                desired.Add(new WpfHudListItemViewModel(
+                    itemId,
+                    WpfHudListItemKind.Permission,
+                    pending.Request.SessionId,
+                    "权限请求",
+                    GetSessionProjectName(session),
+                    BuildPermissionSummary(pending.Request),
+                    GetSessionSourceKey(session),
+                    GetSessionSourceDisplayName(session),
+                    "等待审批",
+                    AgentStatus.WaitingApproval,
+                    "#FFFFB86B",
+                    FormatAge(pending.CreatedAt),
+                    OpenHudListItemCommand));
+            }
         }
 
         foreach (var pending in _questionQueue)
@@ -956,20 +982,40 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             if (!string.IsNullOrWhiteSpace(pending.Question.SessionId))
                 pendingSessionIds.Add(pending.Question.SessionId);
 
-            items.Add(new WpfHudListItemViewModel(
-                $"question:{pending.ActionId}",
-                WpfHudListItemKind.Question,
-                pending.Question.SessionId,
-                "问答请求",
-                GetSessionProjectName(session),
-                pending.CurrentQuestionText,
-                GetSessionSourceKey(session),
-                GetSessionSourceDisplayName(session),
-                "等待回答",
-                AgentStatus.WaitingQuestion,
-                "#FF7AB8FF",
-                FormatAge(pending.CreatedAt),
-                OpenHudListItemCommand));
+            var itemId = $"question:{pending.ActionId}";
+            if (existingById.TryGetValue(itemId, out var existing) && existing.Kind == WpfHudListItemKind.Question)
+            {
+                existing.UpdateSessionPresentation(
+                    "问答请求",
+                    GetSessionProjectName(session),
+                    pending.CurrentQuestionText,
+                    GetSessionSourceKey(session),
+                    GetSessionSourceDisplayName(session),
+                    "等待回答",
+                    AgentStatus.WaitingQuestion,
+                    "#FF7AB8FF",
+                    FormatAge(pending.CreatedAt),
+                    "",
+                    "");
+                desired.Add(existing);
+            }
+            else
+            {
+                desired.Add(new WpfHudListItemViewModel(
+                    itemId,
+                    WpfHudListItemKind.Question,
+                    pending.Question.SessionId,
+                    "问答请求",
+                    GetSessionProjectName(session),
+                    pending.CurrentQuestionText,
+                    GetSessionSourceKey(session),
+                    GetSessionSourceDisplayName(session),
+                    "等待回答",
+                    AgentStatus.WaitingQuestion,
+                    "#FF7AB8FF",
+                    FormatAge(pending.CreatedAt),
+                    OpenHudListItemCommand));
+            }
         }
 
         foreach (var vm in _sessionItems.Values)
@@ -981,27 +1027,57 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
             var session = GetSession(vm.SessionId);
             var kind = GetHudSessionListItemKind(session);
+            var itemId = $"session:{vm.SessionId}";
+            var title = kind == WpfHudListItemKind.Completed ? "已完成" : "运行中";
+            var accent = kind == WpfHudListItemKind.Completed ? "#FF8EE6D0" : "#FF7AB8FF";
+            var detailUser = FormatSessionUserPrompt(session);
+            var detailAssistant = FormatSessionAssistantReply(session);
+            var shouldExpand = SurfaceKind == WpfHudSurfaceKind.SessionList &&
+                string.Equals(_selectedHudItemId, itemId, StringComparison.Ordinal);
 
-            items.Add(new WpfHudListItemViewModel(
-                $"session:{vm.SessionId}",
-                kind,
-                vm.SessionId,
-                kind == WpfHudListItemKind.Completed ? "已完成" : "运行中",
-                vm.Title,
-                vm.LastMessage,
-                vm.SourceKey,
-                vm.Source,
-                vm.StatusText,
-                vm.Status,
-                kind == WpfHudListItemKind.Completed ? "#FF8EE6D0" : "#FF7AB8FF",
-                vm.TimeText,
-                OpenHudListItemCommand,
-                FormatSessionUserPrompt(session),
-                FormatSessionAssistantReply(session),
-                SurfaceKind == WpfHudSurfaceKind.SessionList && string.Equals(_selectedHudItemId, $"session:{vm.SessionId}", StringComparison.Ordinal)));
+            if (existingById.TryGetValue(itemId, out var existing) &&
+                existing.Kind is WpfHudListItemKind.Running or WpfHudListItemKind.Completed &&
+                // Kind is immutable; recreate when Running <-> Completed flips.
+                existing.Kind == kind)
+            {
+                existing.UpdateSessionPresentation(
+                    title,
+                    vm.Title,
+                    vm.LastMessage,
+                    vm.SourceKey,
+                    vm.Source,
+                    vm.StatusText,
+                    vm.Status,
+                    accent,
+                    vm.TimeText,
+                    detailUser,
+                    detailAssistant);
+                existing.IsExpanded = shouldExpand;
+                desired.Add(existing);
+            }
+            else
+            {
+                desired.Add(new WpfHudListItemViewModel(
+                    itemId,
+                    kind,
+                    vm.SessionId,
+                    title,
+                    vm.Title,
+                    vm.LastMessage,
+                    vm.SourceKey,
+                    vm.Source,
+                    vm.StatusText,
+                    vm.Status,
+                    accent,
+                    vm.TimeText,
+                    OpenHudListItemCommand,
+                    detailUser,
+                    detailAssistant,
+                    shouldExpand));
+            }
         }
 
-        var sortedItems = items
+        var sortedItems = desired
             .OrderBy(static item => item.Kind switch
             {
                 WpfHudListItemKind.Permission => 0,
@@ -1012,10 +1088,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             .ThenBy(static item => item.ProjectName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        HudListItems.Clear();
-        foreach (var item in sortedItems)
-            HudListItems.Add(item);
-
+        SyncObservableCollection(HudListItems, sortedItems);
         RebuildHudListGroups(sortedItems);
         UpdateExpandedHudListItems();
     }
@@ -1038,9 +1111,83 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             items.Add(item);
         }
 
-        HudListGroups.Clear();
+        var existingGroups = HudListGroups.ToDictionary(static group => group.SourceKey, StringComparer.OrdinalIgnoreCase);
+        var nextGroups = new List<WpfHudListGroupViewModel>(sourceOrder.Count);
         foreach (var sourceKey in sourceOrder)
-            HudListGroups.Add(new WpfHudListGroupViewModel(sourceKey, groupItems[sourceKey]));
+        {
+            if (!existingGroups.TryGetValue(sourceKey, out var group))
+                group = new WpfHudListGroupViewModel(sourceKey);
+
+            group.SyncItems(groupItems[sourceKey]);
+            nextGroups.Add(group);
+        }
+
+        SyncObservableCollection(HudListGroups, nextGroups);
+    }
+
+    private static void SyncObservableCollection<T>(ObservableCollection<T> target, IReadOnlyList<T> desired)
+        where T : class
+    {
+        for (var i = 0; i < desired.Count; i++)
+        {
+            if (i < target.Count)
+            {
+                if (!ReferenceEquals(target[i], desired[i]))
+                    target[i] = desired[i];
+            }
+            else
+            {
+                target.Add(desired[i]);
+            }
+        }
+
+        while (target.Count > desired.Count)
+            target.RemoveAt(target.Count - 1);
+    }
+
+    private void NotifyWebhookApprovalOnce(string? actionId, PermissionRequest request)
+    {
+        if (_webhookNotifier is null)
+            return;
+
+        var key = string.IsNullOrWhiteSpace(actionId)
+            ? $"permission:{request.SessionId}:{request.ToolUseId}:{request.ToolName}"
+            : $"permission:{actionId}";
+        if (!_notifiedWebhookActionKeys.Add(key))
+            return;
+
+        _webhookNotifier.NotifyApproval(request);
+    }
+
+    private void NotifyWebhookQuestionOnce(string? actionId, QuestionData question)
+    {
+        if (_webhookNotifier is null)
+            return;
+
+        var key = string.IsNullOrWhiteSpace(actionId)
+            ? $"question:{question.SessionId}:{question.Question}"
+            : $"question:{actionId}";
+        if (!_notifiedWebhookActionKeys.Add(key))
+            return;
+
+        _webhookNotifier.NotifyQuestion(question);
+    }
+
+    private void PruneNotifiedWebhookKeys()
+    {
+        if (_notifiedWebhookActionKeys.Count == 0)
+            return;
+
+        var live = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var pending in _permissionQueue)
+            live.Add($"permission:{pending.ActionId}");
+        foreach (var pending in _questionQueue)
+            live.Add($"question:{pending.ActionId}");
+
+        _notifiedWebhookActionKeys.RemoveWhere(key =>
+            (key.StartsWith("permission:", StringComparison.Ordinal) ||
+             key.StartsWith("question:", StringComparison.Ordinal)) &&
+            !live.Contains(key));
     }
 
     private SessionSnapshot? GetSession(string? sessionId) =>
@@ -1117,12 +1264,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         }
 
         var kind = GetHudSessionListItemKind(session);
-        if (selectedItem.Kind != kind ||
-            !string.Equals(selectedItem.SourceKey, sessionItem.SourceKey, StringComparison.Ordinal) ||
-            !string.Equals(selectedItem.ProjectName, sessionItem.Title, StringComparison.Ordinal))
-        {
+        // Kind is immutable on the VM; force full rebuild when Running <-> Completed flips.
+        if (selectedItem.Kind != kind)
             return false;
-        }
 
         selectedItem.UpdateSessionPresentation(
             kind == WpfHudListItemKind.Completed ? "已完成" : "运行中",
