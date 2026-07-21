@@ -1156,22 +1156,136 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
     private void CopyApiToken_Click(object sender, RoutedEventArgs e)
     {
+        if (string.IsNullOrEmpty(ApiToken))
+        {
+            FeedbackText = "Token 为空，无法复制";
+            return;
+        }
+
+        // WPF Clipboard.SetText/SetDataObject is unreliable under clipboard contention.
+        // Prefer Win32 CF_UNICODETEXT, then UI command copy as last resort.
+        if (TryCopyTextToClipboard(ApiToken))
+            FeedbackText = "Token 已复制到剪贴板";
+        else
+            FeedbackText = "复制 Token 失败，请重试";
+    }
+
+    private bool TryCopyTextToClipboard(string text)
+    {
+        var hwnd = new WindowInteropHelper(this).EnsureHandle();
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            if (TrySetClipboardTextWin32(hwnd, text))
+                return true;
+            System.Threading.Thread.Sleep(25 * (attempt + 1));
+        }
+
+        return TryCopyTextViaTextBox(text);
+    }
+
+    private bool TryCopyTextViaTextBox(string text)
+    {
         try
         {
-            if (string.IsNullOrEmpty(ApiToken))
-            {
-                FeedbackText = "Token 为空，无法复制";
-                return;
-            }
+            var wasVisible = ShowApiToken;
+            if (!wasVisible)
+                ShowApiToken = true;
 
-            System.Windows.Clipboard.SetText(ApiToken);
-            FeedbackText = "Token 已复制到剪贴板";
+            ApiTokenTextBox.Focus();
+            ApiTokenTextBox.Text = text;
+            ApiTokenTextBox.SelectAll();
+            ApiTokenTextBox.Copy();
+
+            if (!wasVisible)
+                ShowApiToken = false;
+            return true;
         }
         catch
         {
-            FeedbackText = "复制 Token 失败";
+            return false;
         }
     }
+
+    private static bool TrySetClipboardTextWin32(IntPtr hwnd, string text)
+    {
+        if (!OpenClipboard(hwnd))
+            return false;
+
+        IntPtr hGlobal = IntPtr.Zero;
+        try
+        {
+            if (!EmptyClipboard())
+                return false;
+
+            var bytes = (text.Length + 1) * 2;
+            hGlobal = GlobalAlloc(GMEM_MOVEABLE, (UIntPtr)bytes);
+            if (hGlobal == IntPtr.Zero)
+                return false;
+
+            var target = GlobalLock(hGlobal);
+            if (target == IntPtr.Zero)
+            {
+                GlobalFree(hGlobal);
+                hGlobal = IntPtr.Zero;
+                return false;
+            }
+
+            try
+            {
+                Marshal.Copy(text.ToCharArray(), 0, target, text.Length);
+                Marshal.WriteInt16(target, text.Length * 2, 0);
+            }
+            finally
+            {
+                GlobalUnlock(hGlobal);
+            }
+
+            if (SetClipboardData(CF_UNICODETEXT, hGlobal) == IntPtr.Zero)
+            {
+                GlobalFree(hGlobal);
+                hGlobal = IntPtr.Zero;
+                return false;
+            }
+
+            // Ownership transferred to the system.
+            hGlobal = IntPtr.Zero;
+            return true;
+        }
+        finally
+        {
+            CloseClipboard();
+            if (hGlobal != IntPtr.Zero)
+                GlobalFree(hGlobal);
+        }
+    }
+
+    private const uint CF_UNICODETEXT = 13;
+    private const uint GMEM_MOVEABLE = 0x0002;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool OpenClipboard(IntPtr hWndNewOwner);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EmptyClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalAlloc(uint uFlags, UIntPtr dwBytes);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalLock(IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GlobalUnlock(IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalFree(IntPtr hMem);
 
     private void RegenerateApiToken_Click(object sender, RoutedEventArgs e)
     {
