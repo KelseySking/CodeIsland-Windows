@@ -548,12 +548,18 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             if (string.Equals(_hudDensityMode, normalized, StringComparison.Ordinal)) return;
             _hudDensityMode = normalized;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsOrbHudDensityMode));
             _settings.Set("hud_density_mode", normalized);
-            FeedbackText = normalized == WpfHudDensityMode.Compact
-                ? "HUD 已切换为紧凑"
-                : "HUD 已切换为经典样式";
+            FeedbackText = normalized switch
+            {
+                WpfHudDensityMode.Compact => "HUD 已切换为紧凑",
+                WpfHudDensityMode.Orb => "HUD 已切换为悬浮球",
+                _ => "HUD 已切换为经典样式"
+            };
         }
     }
+
+    public bool IsOrbHudDensityMode => WpfHudDensityMode.IsOrb(_hudDensityMode);
 
     public string PanelHeightMode
     {
@@ -746,6 +752,16 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             _settings.Set("hud_density_mode", normalized);
 
         return normalized;
+    }
+
+    private void OnResetOrbPositionClick(object sender, RoutedEventArgs e)
+    {
+        _settings.Remove(WpfHudDensityMode.OrbLeftKey);
+        _settings.Remove(WpfHudDensityMode.OrbTopKey);
+        _settings.Remove(WpfHudDensityMode.OrbMonitorIdKey);
+        // Re-fire density mode so HudWindow clamps to display_position without requiring a mode toggle.
+        _settings.Set("hud_density_mode", WpfHudDensityMode.Normalize(_hudDensityMode));
+        FeedbackText = "悬浮球位置已重置为当前显示位置锚点";
     }
 
     private void ApplySessionTimeout(string value)

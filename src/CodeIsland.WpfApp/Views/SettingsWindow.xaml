@@ -296,12 +296,22 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="HUD 样式" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="经典保留当前尺寸，紧凑会使用更小折叠态并只在待办时显示提醒灯效。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="经典/紧凑为信息条；悬浮球为可拖拽状态球，展开从球生长。待办时球周角标与光环提示。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
-                    <ComboBox Grid.Column="1" SelectedValue="{Binding HudDensityMode, Mode=TwoWay}" SelectedValuePath="Tag" VerticalAlignment="Center" MinHeight="34">
-                      <ComboBoxItem Content="经典" Tag="classic" />
-                      <ComboBoxItem Content="紧凑" Tag="compact" />
-                    </ComboBox>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <ComboBox SelectedValue="{Binding HudDensityMode, Mode=TwoWay}" SelectedValuePath="Tag" MinHeight="34">
+                        <ComboBoxItem Content="经典" Tag="classic" />
+                        <ComboBoxItem Content="紧凑" Tag="compact" />
+                        <ComboBoxItem Content="悬浮球" Tag="orb" />
+                      </ComboBox>
+                      <Button Content="重置悬浮球位置"
+                              Margin="0,8,0,0"
+                              MinHeight="30"
+                              Padding="10,4"
+                              HorizontalAlignment="Stretch"
+                              IsEnabled="{Binding IsOrbHudDensityMode}"
+                              Click="OnResetOrbPositionClick" />
+                    </StackPanel>
                   </Grid>
                 </Border>
 

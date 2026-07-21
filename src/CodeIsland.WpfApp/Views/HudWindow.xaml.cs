@@ -30,6 +30,11 @@ public partial class HudWindow : Window
     private const double CompactCollapsedSideWidth = 42d;
     private const double CompactCollapsedSideHeight = 114d;
     private const double CompactHudContentWidth = 480d;
+    private const double OrbCollapsedSize = 48d;
+    private const double OrbShellPadding = 0d;
+    private const double OrbCornerRadius = 12d;
+    private const double OrbDragThreshold = 5d;
+    private const int OrbHoverOpenMilliseconds = 300;
     private const int PendingHoverOpenMilliseconds = 280;
     private const int ClassicHoverOpenMilliseconds = 360;
     private const int CompactHoverOpenMilliseconds = 520;
@@ -94,6 +99,11 @@ public partial class HudWindow : Window
     private readonly HashSet<string> _exitingHudListItemIds = new(StringComparer.Ordinal);
     private bool _deferredSessionListShrinkReady;
     private bool _sessionListItemExitCompleted;
+    private bool _orbDragging;
+    private bool _orbDragMoved;
+    private System.Windows.Point _orbDragStartScreen;
+    private double _orbDragOriginLeft;
+    private double _orbDragOriginTop;
 
     public HudWindow(WpfAppState state, SettingsManager settings)
     {
@@ -171,6 +181,9 @@ public partial class HudWindow : Window
         };
         MouseEnter += OnMouseEnter;
         MouseLeave += OnMouseLeave;
+        PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
+        PreviewMouseMove += OnPreviewMouseMove;
+        PreviewMouseLeftButtonUp += OnPreviewMouseLeftButtonUp;
         PendingHost.MouseEnter += OnPendingHostMouseEnter;
         PendingHost.MouseLeave += OnPendingHostMouseLeave;
         MouseLeftButtonUp += OnMouseLeftButtonUp;
@@ -180,7 +193,8 @@ public partial class HudWindow : Window
 
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
     {
-        if (e.Key is "display_position" or "display_monitor" or "hud_density_mode")
+        if (e.Key is "display_position" or "display_monitor" or "hud_density_mode"
+            or WpfHudDensityMode.OrbLeftKey or WpfHudDensityMode.OrbTopKey or WpfHudDensityMode.OrbMonitorIdKey)
         {
             Dispatcher.Invoke(() =>
             {
@@ -315,7 +329,7 @@ public partial class HudWindow : Window
             WpfHudSurfaceKind.SessionList => typeof(SessionListView),
             WpfHudSurfaceKind.HudDetail => typeof(HudDetailView),
             WpfHudSurfaceKind.CompletionCard => typeof(CompletionCardView),
-            _ => typeof(CollapsedBarView)
+            _ => IsOrbHudMode() ? typeof(FloatingOrbView) : typeof(CollapsedBarView)
         };
         var previousSurfaceType = _currentSurfaceType;
         var surfaceChanged = _currentSurfaceType != next;
@@ -359,7 +373,8 @@ public partial class HudWindow : Window
             var deferTargetContentUntilCompleted = useCollapsedSource ||
                 pendingExpandedChanged ||
                 (useSnapshotLayer && animationSettings.UsesSnapshotLayerForShrink);
-            var revealCollapsedContentAfterShrink = deferTargetContentUntilCompleted && next == typeof(CollapsedBarView);
+            var revealCollapsedContentAfterShrink = deferTargetContentUntilCompleted &&
+                (next == typeof(CollapsedBarView) || next == typeof(FloatingOrbView));
             if (deferTargetContentUntilCompleted)
                 _pendingLayerExpanded = previousPendingExpanded;
 
@@ -455,7 +470,8 @@ public partial class HudWindow : Window
     {
         Dispatcher.BeginInvoke(() =>
         {
-            if (_state.SurfaceKind != WpfHudSurfaceKind.Collapsed || SurfaceHost.Content is not CollapsedBarView)
+            if (_state.SurfaceKind != WpfHudSurfaceKind.Collapsed ||
+                SurfaceHost.Content is not (CollapsedBarView or FloatingOrbView))
                 return;
 
             _morphAnimator.FadeIn(SurfaceHost, animationSettings.ContentDuration, slideOffset: 0d);
@@ -717,6 +733,8 @@ public partial class HudWindow : Window
     {
         if (type == typeof(CollapsedBarView))
             return new CollapsedBarView { IsVertical = collapsedIsVertical };
+        if (type == typeof(FloatingOrbView))
+            return new FloatingOrbView();
 
         return Activator.CreateInstance(type)!;
     }
@@ -806,7 +824,10 @@ public partial class HudWindow : Window
     }
 
     private static bool ShouldUseCollapsedSource(Type? previousSurfaceType, Type nextSurfaceType) =>
-        previousSurfaceType == typeof(CollapsedBarView) || nextSurfaceType == typeof(CollapsedBarView);
+        previousSurfaceType == typeof(CollapsedBarView) ||
+        nextSurfaceType == typeof(CollapsedBarView) ||
+        previousSurfaceType == typeof(FloatingOrbView) ||
+        nextSurfaceType == typeof(FloatingOrbView);
 
     private (Rect InitialRect, Rect? MidRect, Rect FinalRect) CalculateShellMorphRects(
         WindowLayout previousLayout,
@@ -963,6 +984,22 @@ public partial class HudWindow : Window
 
     private WindowLayout CalculateCollapsedSourceLayout()
     {
+        if (IsOrbHudMode())
+        {
+            var orbWidth = GetCollapsedHorizontalWidth();
+            var orbHeight = GetCollapsedHorizontalHeight();
+            var (orbLeft, orbTop) = ResolveOrbWindowPosition(orbWidth, orbHeight);
+            return new WindowLayout(
+                orbWidth,
+                orbHeight,
+                orbLeft,
+                orbTop,
+                PendingHeight: 0d,
+                SurfaceHeight: Math.Max(0d, orbHeight - GetShellPadding()),
+                MaxWindowHeight: GetMaxWindowHeight(),
+                PendingOnlyLayout: false);
+        }
+
         var sideCollapsed = IsSideCenterPosition();
         var width = sideCollapsed ? GetCollapsedSideWidth() : GetCollapsedHorizontalWidth();
         var height = sideCollapsed ? GetCollapsedSideHeight() : GetCollapsedHorizontalHeight();
@@ -1213,13 +1250,38 @@ public partial class HudWindow : Window
         };
     }
 
-    private double GetShellPadding() => UseCompactCollapsedChrome() ? CompactCollapsedShellPadding : ShellPadding;
+    private double GetShellPadding()
+    {
+        if (UseOrbCollapsedChrome())
+            return OrbShellPadding;
+        return UseCompactCollapsedChrome() ? CompactCollapsedShellPadding : ShellPadding;
+    }
 
     private bool UseCompactCollapsedChrome() =>
         IsCompactHudMode() && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded;
 
+    private bool UseOrbCollapsedChrome() =>
+        IsOrbHudMode() && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded;
+
     private void ApplyShellChrome()
     {
+        // Orb collapsed: no dark panel chrome. Pending color lives on FloatingOrbView, not Shell rim.
+        if (UseOrbCollapsedChrome())
+        {
+            Shell.Padding = new Thickness(0d);
+            Shell.BorderThickness = new Thickness(0d);
+            Shell.Background = System.Windows.Media.Brushes.Transparent;
+            Shell.BorderBrush = System.Windows.Media.Brushes.Transparent;
+            Shell.CornerRadius = new CornerRadius(0d);
+            Shell.ClipToBounds = false;
+            SurfaceLayer.ClipToBounds = false;
+            StopShellPendingBorderAnimation();
+            return;
+        }
+
+        Shell.ClipToBounds = false;
+        SurfaceLayer.ClipToBounds = false;
+
         var shellPadding = GetShellPadding();
         var borderThickness = _state.ShouldShowPendingAlert ? 2d : 1d;
         var perSideInset = shellPadding / 2d;
@@ -1235,8 +1297,12 @@ public partial class HudWindow : Window
             StopShellPendingBorderAnimation();
     }
 
-    private CornerRadius GetShellCornerRadius() =>
-        UseCompactCollapsedChrome() && UseSideCollapsedLayout() ? new CornerRadius(21d) : new CornerRadius(18d);
+    private CornerRadius GetShellCornerRadius()
+    {
+        if (UseOrbCollapsedChrome())
+            return new CornerRadius(OrbCornerRadius);
+        return UseCompactCollapsedChrome() && UseSideCollapsedLayout() ? new CornerRadius(21d) : new CornerRadius(18d);
+    }
 
     private void StartShellPendingBorderAnimation()
     {
@@ -1269,18 +1335,26 @@ public partial class HudWindow : Window
         Shell.BorderBrush = (System.Windows.Media.Brush)FindResource("HudBorderBrush");
     }
 
-    private double GetCollapsedHorizontalWidth() => IsCompactHudMode() ? CompactCollapsedHorizontalWidth : CollapsedHorizontalWidth;
+    private double GetCollapsedHorizontalWidth() =>
+        IsOrbHudMode() ? OrbCollapsedSize : IsCompactHudMode() ? CompactCollapsedHorizontalWidth : CollapsedHorizontalWidth;
 
-    private double GetCollapsedHorizontalHeight() => IsCompactHudMode() ? CompactCollapsedHorizontalHeight : CollapsedHorizontalHeight;
+    private double GetCollapsedHorizontalHeight() =>
+        IsOrbHudMode() ? OrbCollapsedSize : IsCompactHudMode() ? CompactCollapsedHorizontalHeight : CollapsedHorizontalHeight;
 
     private double GetCollapsedSideWidth() => IsCompactHudMode() ? CompactCollapsedSideWidth : CollapsedSideWidth;
 
     private double GetCollapsedSideHeight() => IsCompactHudMode() ? CompactCollapsedSideHeight : CollapsedSideHeight;
 
-    private double GetHudContentWidth() => IsCompactHudMode() ? CompactHudContentWidth : HudContentWidth;
+    private double GetHudContentWidth() => UsesCompactExpandedMetrics() ? CompactHudContentWidth : HudContentWidth;
 
     private bool IsCompactHudMode() =>
         WpfHudDensityMode.IsCompact(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
+
+    private bool IsOrbHudMode() =>
+        WpfHudDensityMode.IsOrb(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
+
+    private bool UsesCompactExpandedMetrics() =>
+        WpfHudDensityMode.UsesCompactExpandedMetrics(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
 
     private double CalculateSessionListHeight(double maxSurfaceHeight)
     {
@@ -1288,7 +1362,7 @@ public partial class HudWindow : Window
         if (itemCount <= 0)
             return Math.Clamp(120d, 104d, maxSurfaceHeight);
 
-        var compactHud = IsCompactHudMode();
+        var compactHud = UsesCompactExpandedMetrics();
         var visibleCardCount = Math.Min(itemCount, compactHud ? 3 : 4);
         var visibleGroupCount = CountVisibleHudListGroups(visibleCardCount);
         var inlineDetailHeight = HasEffectiveExpandedHudListSessionDetail() ? HudAnimationTimings.InlineSessionDetailHeight : 0d;
@@ -1423,6 +1497,9 @@ public partial class HudWindow : Window
 
     private (double Left, double Top) CalculateWindowPosition(double width, double height)
     {
+        if (IsOrbHudMode())
+            return CalculateOrbAnchoredWindowPosition(width, height);
+
         var position = WpfHudDisplayPosition.Normalize(_settings.Get("display_position", WpfHudDisplayPosition.Default));
         var area = GetCurrentMonitorWorkAreaDip();
         var left = position switch
@@ -1438,6 +1515,147 @@ public partial class HudWindow : Window
             _ => area.Top
         };
         return (left, top);
+    }
+
+    private (double Left, double Top) CalculateOrbAnchoredWindowPosition(double width, double height)
+    {
+        var orbWidth = GetCollapsedHorizontalWidth();
+        var orbHeight = GetCollapsedHorizontalHeight();
+        var (orbLeft, orbTop) = ResolveOrbWindowPosition(orbWidth, orbHeight);
+
+        // Collapsed orb: use the stored/anchor orb rect (or live drag position).
+        if (_state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded)
+            return (orbLeft, orbTop);
+
+        var orbCenterX = orbLeft + orbWidth / 2d;
+        var area = GetOrbWorkAreaDip(orbLeft, orbTop, orbWidth, orbHeight);
+
+        var left = orbCenterX - width / 2d;
+        left = Math.Clamp(left, area.Left, Math.Max(area.Left, area.Right - width));
+
+        // Prefer panel above the orb (orb sits near bottom center of panel); flip below when needed.
+        var topAbove = orbTop + orbHeight - height;
+        var topBelow = orbTop;
+        double top;
+        if (topAbove >= area.Top)
+            top = topAbove;
+        else if (topBelow + height <= area.Bottom)
+            top = topBelow;
+        else
+            top = Math.Clamp(topAbove, area.Top, Math.Max(area.Top, area.Bottom - height));
+
+        return (left, top);
+    }
+
+    private (double Left, double Top) ResolveOrbWindowPosition(double width, double height)
+    {
+        if (_orbDragging && !double.IsNaN(Left) && !double.IsNaN(Top))
+        {
+            var area = GetOrbWorkAreaDip(Left, Top, width, height);
+            return (
+                Math.Clamp(Left, area.Left, Math.Max(area.Left, area.Right - width)),
+                Math.Clamp(Top, area.Top, Math.Max(area.Top, area.Bottom - height)));
+        }
+
+        if (TryReadPersistedOrbPosition(width, height, out var left, out var top))
+            return (left, top);
+
+        // Prefer live window position when already shown as orb (avoids snap-back mid-session).
+        if (IsVisible
+            && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed
+            && !double.IsNaN(Left)
+            && !double.IsNaN(Top)
+            && ActualWidth > 0
+            && Math.Abs(ActualWidth - width) < 8d)
+        {
+            var area = GetOrbWorkAreaDip(Left, Top, width, height);
+            return (
+                Math.Clamp(Left, area.Left, Math.Max(area.Left, area.Right - width)),
+                Math.Clamp(Top, area.Top, Math.Max(area.Top, area.Bottom - height)));
+        }
+
+        return CalculateAnchorWindowPosition(width, height);
+    }
+
+    private bool TryReadPersistedOrbPosition(double width, double height, out double left, out double top)
+    {
+        left = 0d;
+        top = 0d;
+        if (!_settings.Has(WpfHudDensityMode.OrbLeftKey) || !_settings.Has(WpfHudDensityMode.OrbTopKey))
+            return false;
+
+        left = _settings.Get(WpfHudDensityMode.OrbLeftKey, double.NaN);
+        top = _settings.Get(WpfHudDensityMode.OrbTopKey, double.NaN);
+        if (double.IsNaN(left) || double.IsNaN(top) || double.IsInfinity(left) || double.IsInfinity(top))
+            return false;
+
+        var area = GetOrbWorkAreaDip(left, top, width, height);
+        left = Math.Clamp(left, area.Left, Math.Max(area.Left, area.Right - width));
+        top = Math.Clamp(top, area.Top, Math.Max(area.Top, area.Bottom - height));
+        return true;
+    }
+
+    private (double Left, double Top) CalculateAnchorWindowPosition(double width, double height)
+    {
+        var position = WpfHudDisplayPosition.Normalize(_settings.Get("display_position", WpfHudDisplayPosition.Default));
+        var area = GetCurrentMonitorWorkAreaDip();
+        var left = position switch
+        {
+            WpfHudDisplayPosition.MiddleLeft => area.Left,
+            WpfHudDisplayPosition.MiddleRight => area.Right - width,
+            _ => area.Left + (area.Width - width) / 2
+        };
+        var top = position switch
+        {
+            WpfHudDisplayPosition.BottomCenter => area.Bottom - height,
+            WpfHudDisplayPosition.MiddleLeft or WpfHudDisplayPosition.MiddleRight => area.Top + (area.Height - height) / 2,
+            _ => area.Top
+        };
+        return (left, top);
+    }
+
+    private Rect GetOrbWorkAreaDip(double left, double top, double width, double height)
+    {
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var scaleX = dpi.DpiScaleX > 0d ? dpi.DpiScaleX : 1d;
+        var scaleY = dpi.DpiScaleY > 0d ? dpi.DpiScaleY : 1d;
+        var physical = new Rect(
+            left * scaleX,
+            top * scaleY,
+            Math.Max(1d, width) * scaleX,
+            Math.Max(1d, height) * scaleY);
+        if (WpfMonitorService.GetMonitorFromPhysicalRect(physical) is { } hit)
+            return hit.WorkAreaDip;
+
+        var monitorId = _settings.Get(WpfHudDensityMode.OrbMonitorIdKey, string.Empty);
+        if (!string.IsNullOrWhiteSpace(monitorId)
+            && WpfMonitorService.ResolveMonitor(monitorId, this) is { } saved
+            && !string.Equals(monitorId, WpfMonitorService.AutoMonitorId, StringComparison.OrdinalIgnoreCase))
+        {
+            // Only trust saved id when it still resolves to that id (not mouse/primary fallback).
+            if (string.Equals(saved.Id, monitorId, StringComparison.OrdinalIgnoreCase)
+                || saved.Id.StartsWith(monitorId.Split('|')[0] + "|", StringComparison.OrdinalIgnoreCase))
+                return saved.WorkAreaDip;
+        }
+
+        return GetCurrentMonitorWorkAreaDip();
+    }
+
+    private void PersistOrbPosition(double left, double top)
+    {
+        _settings.Set(WpfHudDensityMode.OrbLeftKey, left);
+        _settings.Set(WpfHudDensityMode.OrbTopKey, top);
+        var width = GetCurrentWindowWidth() > 0 ? GetCurrentWindowWidth() : OrbCollapsedSize;
+        var height = GetCurrentWindowHeight() > 0 ? GetCurrentWindowHeight() : OrbCollapsedSize;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var scaleX = dpi.DpiScaleX > 0d ? dpi.DpiScaleX : 1d;
+        var scaleY = dpi.DpiScaleY > 0d ? dpi.DpiScaleY : 1d;
+        var physical = new Rect(left * scaleX, top * scaleY, width * scaleX, height * scaleY);
+        var monitor = WpfMonitorService.GetMonitorFromPhysicalRect(physical)
+            ?? WpfMonitorService.ResolveMonitor(_settings.Get("display_monitor", WpfMonitorService.AutoMonitorId), this)
+            ?? WpfMonitorService.GetMonitors().FirstOrDefault();
+        if (monitor is not null)
+            _settings.Set(WpfHudDensityMode.OrbMonitorIdKey, monitor.Id);
     }
 
     private Rect GetCurrentMonitorWorkAreaDip()
@@ -1483,7 +1701,8 @@ public partial class HudWindow : Window
         WpfHudDisplayPosition.IsSideCenter(_settings.Get("display_position", WpfHudDisplayPosition.Default));
     private bool IsTopDisplayPosition() =>
         WpfHudDisplayPosition.Normalize(_settings.Get("display_position", WpfHudDisplayPosition.Default)) == WpfHudDisplayPosition.TopCenter;
-    private bool UseSideCollapsedLayout() => IsSideCenterPosition() && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded;
+    private bool UseSideCollapsedLayout() =>
+        !IsOrbHudMode() && IsSideCenterPosition() && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded;
 
     private bool IsPointerInsideHudWindowBounds()
     {
@@ -1533,6 +1752,9 @@ public partial class HudWindow : Window
 
     private void OnMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        if (_orbDragging)
+            return;
+
         _hoverCloseTimer.Stop();
         _pendingAutoCollapseTimer.Stop();
 
@@ -1549,6 +1771,9 @@ public partial class HudWindow : Window
 
     private void OnMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        if (_orbDragging)
+            return;
+
         _hoverOpenTimer.Stop();
         if (IsShellTransitionProtected())
             return;
@@ -1583,8 +1808,101 @@ public partial class HudWindow : Window
             RestartPendingAutoCollapse();
     }
 
+    private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!CanStartOrbDrag())
+            return;
+
+        if (!GetCursorPos(out var cursor))
+            return;
+
+        _orbDragging = true;
+        _orbDragMoved = false;
+        _orbDragStartScreen = new System.Windows.Point(cursor.X, cursor.Y);
+        _orbDragOriginLeft = Left;
+        _orbDragOriginTop = Top;
+        _hoverOpenTimer.Stop();
+        CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnPreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!_orbDragging || e.LeftButton != MouseButtonState.Pressed)
+            return;
+
+        if (!GetCursorPos(out var cursor))
+            return;
+
+        var dx = cursor.X - _orbDragStartScreen.X;
+        var dy = cursor.Y - _orbDragStartScreen.Y;
+        if (!_orbDragMoved && Math.Sqrt(dx * dx + dy * dy) < OrbDragThreshold)
+            return;
+
+        _orbDragMoved = true;
+        _hoverOpenTimer.Stop();
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var scaleX = dpi.DpiScaleX > 0d ? dpi.DpiScaleX : 1d;
+        var scaleY = dpi.DpiScaleY > 0d ? dpi.DpiScaleY : 1d;
+        var width = GetCurrentWindowWidth() > 0 ? GetCurrentWindowWidth() : OrbCollapsedSize;
+        var height = GetCurrentWindowHeight() > 0 ? GetCurrentWindowHeight() : OrbCollapsedSize;
+        var nextLeft = _orbDragOriginLeft + dx / scaleX;
+        var nextTop = _orbDragOriginTop + dy / scaleY;
+        var area = GetOrbWorkAreaDip(nextLeft, nextTop, width, height);
+        nextLeft = Math.Clamp(nextLeft, area.Left, Math.Max(area.Left, area.Right - width));
+        nextTop = Math.Clamp(nextTop, area.Top, Math.Max(area.Top, area.Bottom - height));
+        Left = nextLeft;
+        Top = nextTop;
+        e.Handled = true;
+    }
+
+    private void OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_orbDragging)
+            return;
+
+        var moved = _orbDragMoved;
+        _orbDragging = false;
+        if (IsMouseCaptured)
+            ReleaseMouseCapture();
+
+        if (moved)
+        {
+            PersistOrbPosition(Left, Top);
+            e.Handled = true;
+            return;
+        }
+
+        // Click (no drag): open list or let pending hover path handle it.
+        if (_state.SurfaceKind == WpfHudSurfaceKind.Collapsed)
+        {
+            _hoverOpenTimer.Stop();
+            if (!_state.HasPendingAction && _state.HasSessions)
+            {
+                _state.ShowSessionList();
+                e.Handled = true;
+            }
+            else if (_state.HasPendingAction && CanShowFoldablePendingLayer() && !_pendingLayerExpanded)
+            {
+                SetPendingLayerExpanded(true);
+                e.Handled = true;
+            }
+        }
+    }
+
+    private bool CanStartOrbDrag() =>
+        IsOrbHudMode()
+        && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed
+        && !_pendingLayerExpanded
+        && !IsShellTransitionProtected();
+
     private void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        // Orb mode handles click/drag in preview handlers.
+        if (IsOrbHudMode())
+            return;
+
         if (_state.SurfaceKind != WpfHudSurfaceKind.Collapsed)
             return;
 
@@ -1598,11 +1916,16 @@ public partial class HudWindow : Window
 
     private void StartHoverOpenTimer()
     {
+        if (_orbDragging)
+            return;
+
         _hoverOpenTimer.Interval = TimeSpan.FromMilliseconds(_state.HasPendingAction
             ? PendingHoverOpenMilliseconds
-            : IsCompactHudMode()
-                ? CompactHoverOpenMilliseconds
-                : ClassicHoverOpenMilliseconds);
+            : IsOrbHudMode()
+                ? OrbHoverOpenMilliseconds
+                : IsCompactHudMode()
+                    ? CompactHoverOpenMilliseconds
+                    : ClassicHoverOpenMilliseconds);
         _hoverOpenTimer.Start();
     }
 
@@ -1625,6 +1948,9 @@ public partial class HudWindow : Window
         ClearWindowLayoutAnimations();
         MouseEnter -= OnMouseEnter;
         MouseLeave -= OnMouseLeave;
+        PreviewMouseLeftButtonDown -= OnPreviewMouseLeftButtonDown;
+        PreviewMouseMove -= OnPreviewMouseMove;
+        PreviewMouseLeftButtonUp -= OnPreviewMouseLeftButtonUp;
         PendingHost.MouseEnter -= OnPendingHostMouseEnter;
         PendingHost.MouseLeave -= OnPendingHostMouseLeave;
         MouseLeftButtonUp -= OnMouseLeftButtonUp;

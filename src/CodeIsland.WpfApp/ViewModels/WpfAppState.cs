@@ -218,14 +218,16 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     public string PendingActionText => PendingKind switch { WpfPendingKind.Permission => "等待审批", WpfPendingKind.Question => "等待回答", _ => "" };
     public string PendingActionShortText => PendingKind switch { WpfPendingKind.Permission => "审批", WpfPendingKind.Question => "问答", _ => "" };
     public int PendingActionRevision => _pendingActionRevision;
-    public bool IsSideCollapsed => IsCollapsed && WpfHudDisplayPosition.IsSideCenter(_settings.Get("display_position", WpfHudDisplayPosition.Default));
-    public bool IsHorizontalCollapsed => !IsSideCollapsed;
+    public bool IsSideCollapsed => IsCollapsed && !IsOrbHudMode && WpfHudDisplayPosition.IsSideCenter(_settings.Get("display_position", WpfHudDisplayPosition.Default));
+    public bool IsHorizontalCollapsed => IsCollapsed && !IsSideCollapsed && !IsOrbHudMode;
     public bool IsCompactHudMode => WpfHudDensityMode.IsCompact(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
-    public bool IsClassicHudMode => !IsCompactHudMode;
+    public bool IsOrbHudMode => WpfHudDensityMode.IsOrb(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
+    public bool IsClassicHudMode => !IsCompactHudMode && !IsOrbHudMode;
     public bool IsClassicHorizontalCollapsed => IsHorizontalCollapsed && IsClassicHudMode;
     public bool IsCompactHorizontalCollapsed => IsHorizontalCollapsed && IsCompactHudMode;
     public bool IsClassicSideCollapsed => IsSideCollapsed && IsClassicHudMode;
     public bool IsCompactSideCollapsed => IsSideCollapsed && IsCompactHudMode;
+    public bool IsOrbCollapsed => IsCollapsed && IsOrbHudMode;
     public bool ShouldShowPendingAlert => HasPendingAction;
     public string? SelectedHudItemId => _selectedHudItemId;
 
@@ -1447,11 +1449,13 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(IsSideCollapsed));
         OnPropertyChanged(nameof(IsHorizontalCollapsed));
         OnPropertyChanged(nameof(IsCompactHudMode));
+        OnPropertyChanged(nameof(IsOrbHudMode));
         OnPropertyChanged(nameof(IsClassicHudMode));
         OnPropertyChanged(nameof(IsClassicHorizontalCollapsed));
         OnPropertyChanged(nameof(IsCompactHorizontalCollapsed));
         OnPropertyChanged(nameof(IsClassicSideCollapsed));
         OnPropertyChanged(nameof(IsCompactSideCollapsed));
+        OnPropertyChanged(nameof(IsOrbCollapsed));
         OnPropertyChanged(nameof(ShouldShowPendingAlert));
     }
 

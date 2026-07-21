@@ -53,8 +53,13 @@ public sealed class SettingsManager
 
     public void Remove(string key)
     {
+        if (!_settings.TryGetValue(key, out var oldValue))
+            return;
+
         _settings.Remove(key);
         Save();
+        var tombstone = JsonSerializer.SerializeToElement((object?)null);
+        SettingChanged?.Invoke(this, new SettingChangedEventArgs(key, oldValue, tombstone));
     }
 
     private Dictionary<string, JsonElement> Load()
