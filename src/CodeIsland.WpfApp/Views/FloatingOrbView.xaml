@@ -10,38 +10,36 @@
              ClipToBounds="False">
   <!-- 48 transparent canvas: 36 icon + room for top-right badge. No drop shadow. -->
   <Grid Width="48" Height="48" Cursor="Hand" Background="Transparent" ClipToBounds="False">
-    <Border x:Name="PendingGlow"
-            Width="38"
-            Height="38"
-            CornerRadius="11"
-            HorizontalAlignment="Left"
-            VerticalAlignment="Bottom"
-            Margin="4,0,0,4"
-            BorderBrush="#FFFFB86B"
-            BorderThickness="2"
-            Background="Transparent"
-            Opacity="0"
-            IsHitTestVisible="False"
-            Visibility="{Binding HasPendingAction, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+    <!-- Icon + pending ring share one cell so the ring stays concentric. -->
+    <Grid Width="36"
+          Height="36"
+          HorizontalAlignment="Left"
+          VerticalAlignment="Bottom"
+          Margin="4,0,0,4"
+          ClipToBounds="False">
+      <Border x:Name="PendingGlow"
+              Margin="-2"
+              CornerRadius="12"
+              BorderBrush="#FFFFB86B"
+              BorderThickness="2"
+              Background="Transparent"
+              Opacity="0"
+              IsHitTestVisible="False"
+              Visibility="{Binding HasPendingAction, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
 
-    <!-- Icon tile: rounded square, mascot nearly edge-to-edge -->
-    <Border Width="36"
-            Height="36"
-            HorizontalAlignment="Left"
-            VerticalAlignment="Bottom"
-            Margin="4,0,0,4"
-            CornerRadius="10"
-            Background="#FF1B2433"
-            BorderBrush="#18000000"
-            BorderThickness="1">
-      <views:PixelMascotControl Width="32"
-                                Height="32"
-                                PixelSize="2.15"
-                                SessionSource="{Binding ActiveSource}"
-                                SessionStatus="{Binding ActiveStatus}"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center" />
-    </Border>
+      <Border CornerRadius="10"
+              Background="#FF1B2433"
+              BorderBrush="#18000000"
+              BorderThickness="1">
+        <views:PixelMascotControl Width="32"
+                                  Height="32"
+                                  PixelSize="2.15"
+                                  SessionSource="{Binding ActiveSource}"
+                                  SessionStatus="{Binding ActiveStatus}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center" />
+      </Border>
+    </Grid>
 
     <!-- Session count: fully inside canvas, not clipped -->
     <Border MinWidth="16"
