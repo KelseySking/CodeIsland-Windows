@@ -104,6 +104,7 @@ public partial class HudWindow : Window
     private System.Windows.Point _orbDragStartScreen;
     private double _orbDragOriginLeft;
     private double _orbDragOriginTop;
+    private string _currentHudDensityMode = string.Empty;
 
     public HudWindow(WpfAppState state, SettingsManager settings)
     {
@@ -333,6 +334,11 @@ public partial class HudWindow : Window
         };
         var previousSurfaceType = _currentSurfaceType;
         var surfaceChanged = _currentSurfaceType != next;
+        var nextDensityMode = GetCurrentHudDensityMode();
+        // First paint has no previous mode; only real setting changes should morph.
+        var densityModeChanged = _currentHudDensityMode.Length > 0 &&
+            !string.Equals(_currentHudDensityMode, nextDensityMode, StringComparison.Ordinal);
+        _currentHudDensityMode = nextDensityMode;
         var expectedPendingExpanded = GetExpectedPendingLayerExpanded();
         var pendingExpandedChanged = previousPendingExpanded != expectedPendingExpanded;
         var useCollapsedSource = ShouldUseCollapsedSource(previousSurfaceType, next);
@@ -342,6 +348,10 @@ public partial class HudWindow : Window
 
         var targetLayout = CalculateWindowLayout();
         var transitionKind = ResolveShellTransitionKind(previousLayout, targetLayout);
+        // classic↔compact keeps CollapsedBarView, so surfaceChanged is false; still morph the shell.
+        var densityLayoutChanged = densityModeChanged && transitionKind != ShellTransitionKind.SameSize;
+        if (densityLayoutChanged && !surfaceChanged)
+            useCollapsedSource = false;
         var shouldDeferNonTopSessionListShrink = ShouldDeferNonTopSessionListShrink(previousSurfaceType, next, transitionKind);
         if (shouldDeferNonTopSessionListShrink)
         {
@@ -355,8 +365,8 @@ public partial class HudWindow : Window
             CancelDeferredSessionListShrink();
 
         var sessionListLayoutChanged = ShouldAnimateSessionListLayoutChange(previousSurfaceType, next, transitionKind);
-        var shouldRunShellTransition = surfaceChanged || pendingExpandedChanged || sessionListLayoutChanged;
-        var duration = surfaceChanged || sessionListLayoutChanged || shouldAnimateNonTopSessionListShrinkBounds
+        var shouldRunShellTransition = surfaceChanged || pendingExpandedChanged || sessionListLayoutChanged || densityLayoutChanged;
+        var duration = surfaceChanged || sessionListLayoutChanged || densityLayoutChanged || shouldAnimateNonTopSessionListShrinkBounds
             ? animationSettings.SurfaceDuration
             : animationSettings.PendingDuration;
         if (shouldAnimateNonTopSessionListShrinkBounds)
@@ -1349,14 +1359,15 @@ public partial class HudWindow : Window
 
     private double GetHudContentWidth() => UsesCompactExpandedMetrics() ? CompactHudContentWidth : HudContentWidth;
 
-    private bool IsCompactHudMode() =>
-        WpfHudDensityMode.IsCompact(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
+    private string GetCurrentHudDensityMode() =>
+        WpfHudDensityMode.Normalize(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
 
-    private bool IsOrbHudMode() =>
-        WpfHudDensityMode.IsOrb(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
+    private bool IsCompactHudMode() => WpfHudDensityMode.IsCompact(GetCurrentHudDensityMode());
+
+    private bool IsOrbHudMode() => WpfHudDensityMode.IsOrb(GetCurrentHudDensityMode());
 
     private bool UsesCompactExpandedMetrics() =>
-        WpfHudDensityMode.UsesCompactExpandedMetrics(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
+        WpfHudDensityMode.UsesCompactExpandedMetrics(GetCurrentHudDensityMode());
 
     private double CalculateSessionListHeight(double maxSurfaceHeight)
     {
