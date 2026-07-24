@@ -40,6 +40,11 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private readonly Queue<PendingQuestion> _questionQueue = new();
     private readonly ConcurrentDictionary<string, byte> _autoApprovingPermissionIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> _notifiedWebhookActionKeys = new(StringComparer.Ordinal);
+    /// <summary>
+    /// 展示层本地失效的 pending actionId。仅影响 HUD 投影，不代表已向服务端提交 allow/deny/answer。
+    /// 当服务端 pending 列表不再包含该 actionId 时清理。
+    /// </summary>
+    private readonly HashSet<string> _locallyInvalidatedPendingActionIds = new(StringComparer.Ordinal);
     private WpfHudSurfaceKind _surfaceKind = WpfHudSurfaceKind.Collapsed;
     private string? _selectedSessionId;
     private string? _selectedHudItemId;
@@ -118,6 +123,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         _permissionQueue.Clear();
         _questionQueue.Clear();
         _autoApprovingPermissionIds.Clear();
+        _locallyInvalidatedPendingActionIds.Clear();
         _notifiedWebhookActionKeys.Clear();
         _removedHudSessionIds.Clear();
         _selectedSessionId = null;
@@ -352,9 +358,12 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             QuestionAnswer = "";
         }
 
-        if (!string.Equals(previousPendingSignature, BuildPendingSignature(), StringComparison.Ordinal))
+        var pendingProjectionChanged =
+            !string.Equals(previousPendingSignature, BuildPendingSignature(), StringComparison.Ordinal);
+        if (pendingProjectionChanged)
             _pendingActionRevision++;
 
+        // 外部处理后本地失效/权威源清空：清理已失效的选中 pending，并尽量落到下一个有效项。
         if (_selectedPendingActionId != null && !HasPendingActionProjection(_selectedPendingActionId))
         {
             _selectedPendingActionId = null;
@@ -364,6 +373,37 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             {
                 _selectedHudItemId = null;
             }
+
+            if (SurfaceKind == WpfHudSurfaceKind.HudDetail)
+            {
+                // 先重建列表，才能定位下一个有效 pending（与用户主动审批后的 Advance 路径对齐）。
+                RebuildHudListItems();
+                var nextPending = HudListItems.FirstOrDefault(static item =>
+                    item.Kind is WpfHudListItemKind.Permission or WpfHudListItemKind.Question);
+                if (nextPending != null)
+                {
+                    _selectedHudItemId = nextPending.ItemId;
+                    _selectedSessionId = nextPending.SessionId;
+                    _selectedPendingActionId = nextPending.ItemId.Split(':').LastOrDefault();
+                    _selectedPendingActionKind = nextPending.Kind;
+                    SurfaceKind = WpfHudSurfaceKind.HudDetail;
+                    QuestionAnswer = "";
+                }
+                else
+                {
+                    SurfaceKind = WpfHudSurfaceKind.SessionList;
+                }
+            }
+        }
+        else if (!HasPendingAction &&
+                 SurfaceKind == WpfHudSurfaceKind.HudDetail &&
+                 _selectedPendingActionId == null &&
+                 (_selectedHudItemId == null ||
+                  _selectedHudItemId.StartsWith("permission:", StringComparison.Ordinal) ||
+                  _selectedHudItemId.StartsWith("question:", StringComparison.Ordinal)))
+        {
+            // 兜底：已无 pending 但仍停在审批/问答详情时，退回列表。
+            SurfaceKind = WpfHudSurfaceKind.SessionList;
         }
 
         if (_selectedSessionId == null &&
@@ -402,7 +442,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
                 break;
         }
 
-        if (change.Effect is SideEffect.None &&
+        // pending 投影变化（含本地失效）时必须走完整 RefreshAll，避免 in-place early-return 漏刷新悬浮层/角标。
+        if (!pendingProjectionChanged &&
+            change.Effect is SideEffect.None &&
             !string.IsNullOrWhiteSpace(change.AffectedSessionId) &&
             _sessions.TryGetValue(change.AffectedSessionId, out var session) &&
             TryUpdateExpandedInlineSessionItemInPlace(change.AffectedSessionId, session))
@@ -456,8 +498,29 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         _questionQueue.Clear();
         var autoApproveAllPermissions = _settings.Get(SettingsManager.AutoApproveAllPermissionsKey, false);
 
+        var serverActionIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var pending in pendingActions)
+        {
+            if (!string.IsNullOrWhiteSpace(pending.ActionId))
+                serverActionIds.Add(pending.ActionId);
+        }
+
+        // 服务端已移除的 action 不再需要本地失效记录。
+        _locallyInvalidatedPendingActionIds.RemoveWhere(actionId => !serverActionIds.Contains(actionId));
+
         foreach (var pending in pendingActions.OrderBy(static action => action.CreatedAt))
         {
+            if (string.IsNullOrWhiteSpace(pending.ActionId))
+                continue;
+
+            // 权威源仍返回 pending 时，用会话推进信号做展示层失效兜底（不提交 allow/deny/answer）。
+            if (_locallyInvalidatedPendingActionIds.Contains(pending.ActionId) ||
+                IsStalePendingAction(pending))
+            {
+                _locallyInvalidatedPendingActionIds.Add(pending.ActionId);
+                continue;
+            }
+
             if (pending.Permission != null)
             {
                 if (autoApproveAllPermissions)
@@ -477,6 +540,66 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
                     pending.CurrentQuestionIndex));
             }
         }
+    }
+
+    /// <summary>
+    /// 判断 pending 是否因会话已在别处处理后继续推进而过期。
+    /// 多题问答的题号/CurrentAnswerKey 推进本身不算失效。
+    /// </summary>
+    private bool IsStalePendingAction(WpfPendingActionSnapshot pending)
+    {
+        if (string.IsNullOrWhiteSpace(pending.SessionId))
+            return false;
+
+        if (!_sessions.TryGetValue(pending.SessionId, out var session))
+            return false;
+
+        var isPermission = pending.Permission != null;
+        var isQuestion = pending.Question != null;
+        if (!isPermission && !isQuestion)
+            return false;
+
+        // 主信号：会话已离开对应等待态（权限/问答分别判断，避免误伤另一类真实等待）。
+        if (isPermission && session.Status != AgentStatus.WaitingApproval)
+            return true;
+
+        if (isQuestion && session.Status != AgentStatus.WaitingQuestion)
+            return true;
+
+        // 仍处于等待态时，仅在出现明确推进信号时本地失效（不单独依赖 LastUpdated 心跳）。
+        return HasStrongSessionProgressAfterPending(session, pending);
+    }
+
+    private static bool HasStrongSessionProgressAfterPending(
+        SessionSnapshot session,
+        WpfPendingActionSnapshot pending)
+    {
+        var createdAt = pending.CreatedAt;
+
+        // 新消息：例如 CLI 在别处处理后继续输出/接收下一条消息。
+        foreach (var message in session.RecentMessages)
+        {
+            if (message.Timestamp > createdAt)
+                return true;
+        }
+
+        // 新工具历史：pending 创建后出现其它工具推进。忽略与当前权限请求同名的条目，避免把“正在等待的工具”误判为已继续。
+        var waitingToolName = pending.Permission?.ToolName;
+        foreach (var entry in session.ToolHistory)
+        {
+            if (entry.Timestamp <= createdAt)
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(waitingToolName) &&
+                string.Equals(entry.ToolName, waitingToolName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     private string BuildPendingSignature()
