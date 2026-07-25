@@ -1,63 +1,12 @@
-<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="bodyGradient" x1="128" y1="7" x2="128" y2="249" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#4C86B6"/>
-      <stop offset="0.48" stop-color="#173A62"/>
-      <stop offset="1" stop-color="#07182E"/>
-    </linearGradient>
-    <linearGradient id="bodyBevel" x1="128" y1="177" x2="128" y2="235" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#23466C" stop-opacity="0.12"/>
-      <stop offset="1" stop-color="#030A15" stop-opacity="0.72"/>
-    </linearGradient>
-    <linearGradient id="faceGradient" x1="128" y1="78" x2="128" y2="182" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#2B3743"/>
-      <stop offset="1" stop-color="#080D14"/>
-    </linearGradient>
-    <linearGradient id="eyeGradient" x1="128" y1="105" x2="128" y2="143" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#FFD5A1"/>
-      <stop offset="1" stop-color="#ED8A46"/>
-    </linearGradient>
-    <linearGradient id="topHighlight" x1="120" y1="20" x2="120" y2="106" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#C2E8FF" stop-opacity="0.62"/>
-      <stop offset="1" stop-color="#C2E8FF" stop-opacity="0"/>
-    </linearGradient>
-    <radialGradient id="blueBloom" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(98 84) rotate(42) scale(78 64)">
-      <stop offset="0" stop-color="#6EB2DB" stop-opacity="0.36"/>
-      <stop offset="1" stop-color="#6EB2DB" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="shadowGradient" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(128 227) scale(106 17)">
-      <stop offset="0" stop-color="#020611" stop-opacity="0.35"/>
-      <stop offset="1" stop-color="#020611" stop-opacity="0"/>
-    </radialGradient>
-    <clipPath id="bodyClip">
-      <rect x="7" y="7" width="242" height="242" rx="53"/>
-    </clipPath>
-  </defs>
-
-  <ellipse cx="128" cy="227" rx="106" ry="17" fill="url(#shadowGradient)"/>
-
-  <g clip-path="url(#bodyClip)">
-    <rect x="7" y="7" width="242" height="242" rx="53" fill="url(#bodyGradient)"/>
-    <rect x="177" y="20" width="59" height="216" rx="36" fill="#061225" fill-opacity="0.46"/>
-    <rect x="24" y="177" width="208" height="58" rx="28" fill="url(#bodyBevel)"/>
-    <rect x="22" y="20" width="196" height="86" rx="38" fill="url(#topHighlight)"/>
-    <ellipse cx="98" cy="84" rx="78" ry="64" fill="url(#blueBloom)"/>
-    <ellipse cx="176" cy="92" rx="44" ry="60" fill="#2D6FA7" fill-opacity="0.18"/>
-  </g>
-
-  <rect x="10" y="10" width="236" height="236" rx="50" stroke="#041024" stroke-width="6"/>
-  <rect x="12.5" y="12.5" width="231" height="231" rx="48" stroke="#8EC7EF" stroke-opacity="0.45" stroke-width="3"/>
-
-  <rect x="38" y="78" width="180" height="104" rx="31" fill="url(#faceGradient)"/>
-  <rect x="40" y="80" width="176" height="100" rx="29" stroke="#02060B" stroke-opacity="0.58" stroke-width="4"/>
-  <rect x="50" y="89" width="156" height="32" rx="16" fill="#CAD8E0" fill-opacity="0.18"/>
-
-  <rect x="65" y="105" width="48" height="38" rx="11" fill="url(#eyeGradient)" stroke="#8B4A23" stroke-width="3"/>
-  <rect x="143" y="105" width="48" height="38" rx="11" fill="url(#eyeGradient)" stroke="#8B4A23" stroke-width="3"/>
-  <ellipse cx="82.5" cy="117.5" rx="5.5" ry="4.5" fill="#FFF4DC" fill-opacity="0.73"/>
-  <ellipse cx="160.5" cy="117.5" rx="5.5" ry="4.5" fill="#FFF4DC" fill-opacity="0.73"/>
-  <path d="M111 162H145" stroke="#B96434" stroke-opacity="0.75" stroke-width="5" stroke-linecap="round"/>
-
-  <circle cx="194" cy="45" r="6" fill="#BFE9FF" fill-opacity="0.35"/>
-  <circle cx="205.5" cy="59.5" r="3.5" fill="#BFE9FF" fill-opacity="0.28"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <title>CodeIsland application icon</title>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#071A30"/>
+  <rect x="16" y="16" width="224" height="224" rx="48" fill="#0D3158" stroke="#1C6199" stroke-width="8"/>
+  <path d="M34 104C45 61 84 32 128 32C172 32 211 61 222 104" stroke="#65D6F7" stroke-width="10" stroke-linecap="round"/>
+  <path d="M222 152C211 195 172 224 128 224C84 224 45 195 34 152" stroke="#2F8ED0" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="34" cy="104" r="7" fill="#FF9D3D"/>
+  <circle cx="222" cy="152" r="7" fill="#65D6F7"/>
+  <rect x="42" y="76" width="172" height="104" rx="36" fill="#06131F" stroke="#65D6F7" stroke-width="8"/>
+  <rect x="75" y="116" width="38" height="26" rx="10" fill="#FF9D3D"/>
+  <rect x="143" y="116" width="38" height="26" rx="10" fill="#FF9D3D"/>
 </svg>
