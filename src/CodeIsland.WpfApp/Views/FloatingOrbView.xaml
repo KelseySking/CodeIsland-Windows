@@ -31,13 +31,20 @@
               Background="#FF1B2433"
               BorderBrush="#18000000"
               BorderThickness="1">
-        <views:PixelMascotControl Width="32"
-                                  Height="32"
-                                  PixelSize="2.15"
-                                  SessionSource="{Binding ActiveSource}"
-                                  SessionStatus="{Binding ActiveStatus}"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center" />
+        <Grid x:Name="MascotHost"
+              Width="32"
+              Height="32"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              RenderTransformOrigin="0.5,0.5">
+          <views:PixelMascotControl Width="32"
+                                    Height="32"
+                                    PixelSize="2.15"
+                                    SessionSource="{Binding ActiveSource}"
+                                    SessionStatus="{Binding ActiveStatus}"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center" />
+        </Grid>
       </Border>
     </Grid>
 
