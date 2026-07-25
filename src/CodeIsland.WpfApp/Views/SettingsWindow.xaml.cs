@@ -72,7 +72,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private bool _showApiToken;
     private bool _suppressTokenPasswordSync;
     private bool _codeOrbitReconnectBusy;
-    private string _codeOrbitReconnectFeedback = "修改后点击「应用并重连」使连接参数生效。";
+    private string _codeOrbitReconnectFeedback = "修改后点「应用并重连」生效。";
     private bool _apiTokenPasswordBoxInitialized;
 
     public SettingsWindow(SettingsManager settings, IWpfSourceService? sourceService = null)
@@ -307,7 +307,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             FeedbackText = value
                 ? "已设为托管启动 CodeOrbit（需点「应用并重连」生效）"
                 : "已设为连接外部 CodeOrbit（需点「应用并重连」生效）";
-            CodeOrbitReconnectFeedback = "设置已保存，点击「应用并重连」使连接生效。";
+            CodeOrbitReconnectFeedback = "已保存，点「应用并重连」生效。";
         }
     }
 
@@ -323,7 +323,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             OnPropertyChanged(nameof(ShowWildcardHostWarning));
             _settings.Set("api_bind_host", normalized);
             FeedbackText = "绑定地址已保存（需点「应用并重连」生效）";
-            CodeOrbitReconnectFeedback = "设置已保存，点击「应用并重连」使连接生效。";
+            CodeOrbitReconnectFeedback = "已保存，点「应用并重连」生效。";
         }
     }
 
@@ -353,7 +353,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
             _settings.Set("api_port", port);
             FeedbackText = "端口已保存（需点「应用并重连」生效）";
-            CodeOrbitReconnectFeedback = "设置已保存，点击「应用并重连」使连接生效。";
+            CodeOrbitReconnectFeedback = "已保存，点「应用并重连」生效。";
         }
     }
 
@@ -370,7 +370,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                 _settings.Set("api_token", token);
             SyncApiTokenPasswordBox();
             FeedbackText = "Token 已保存（需点「应用并重连」生效）";
-            CodeOrbitReconnectFeedback = "设置已保存，点击「应用并重连」使连接生效。";
+            CodeOrbitReconnectFeedback = "已保存，点「应用并重连」生效。";
         }
     }
 
@@ -420,8 +420,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
     public string CodeOrbitStatusHelp =>
         string.IsNullOrWhiteSpace(RuntimeVersion)
-            ? "连接状态来自当前已激活的 CodeOrbit 客户端。"
-            : $"当前客户端版本 {RuntimeVersion}";
+            ? "当前 CodeOrbit 连接状态。"
+            : $"版本 {RuntimeVersion}";
 
     public bool AutoApproveSafeTools
     {
@@ -1263,7 +1263,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         OnPropertyChanged(nameof(ApiToken));
         SyncApiTokenPasswordBox();
         FeedbackText = "已重新生成 Token（需点「应用并重连」生效）";
-        CodeOrbitReconnectFeedback = "Token 已更新，点击「应用并重连」使连接生效。";
+        CodeOrbitReconnectFeedback = "Token 已更新，点「应用并重连」生效。";
     }
 
     private async void ApplyAndReconnectCodeOrbit_Click(object sender, RoutedEventArgs e)

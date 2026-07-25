@@ -153,7 +153,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="开机自启" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="开机后自动启动 CodeIsland。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="登录 Windows 后自动启动。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <CheckBox Grid.Column="1" Style="{StaticResource SettingsToggleStyle}" IsChecked="{Binding LaunchAtLogin, Mode=TwoWay}" />
                   </Grid>
@@ -167,7 +167,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="显示位置" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="选择悬浮窗在屏幕上的位置。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="悬浮窗贴在屏幕的哪一边。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <ComboBox Grid.Column="1" SelectedValue="{Binding DisplayPosition, Mode=TwoWay}" SelectedValuePath="Tag" VerticalAlignment="Center" MinHeight="34">
                       <ComboBoxItem Content="顶部居中" Tag="top-center" />
@@ -186,7 +186,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="显示器" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="选择悬浮窗显示在哪个屏幕。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="多显示器时显示在哪块屏。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <ComboBox Grid.Column="1"
                               ItemsSource="{Binding DisplayMonitorOptions}"
@@ -216,7 +216,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="自动审批安全工具" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="自动允许只读查看操作，其他操作仍需确认。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="只读操作自动通过，其余仍需确认。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <CheckBox Grid.Column="1" Style="{StaticResource SettingsToggleStyle}" IsChecked="{Binding AutoApproveSafeTools, Mode=TwoWay}" />
                   </Grid>
@@ -230,7 +230,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="一键通过审批（问答除外）" Style="{StaticResource SettingsLabelStyle}" Foreground="#FFFFB4AF" />
-                      <TextBlock Text="将自动允许所有权限审批，问答除外。开启后风险较高，请谨慎使用。" Style="{StaticResource SettingsHelpStyle}" Foreground="#CCFFB4AF" />
+                      <TextBlock Text="自动通过全部权限（问答仍需确认）。风险较高，请谨慎。" Style="{StaticResource SettingsHelpStyle}" Foreground="#CCFFB4AF" />
                     </StackPanel>
                     <CheckBox Grid.Column="1" Style="{StaticResource SettingsToggleStyle}" IsChecked="{Binding AutoApproveAllPermissions, Mode=TwoWay}" />
                   </Grid>
@@ -244,7 +244,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="提醒转发地址" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="填写网址后，重要提醒会发送到这里。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="重要提醒会 POST 到该地址。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <TextBox Grid.Column="1" Text="{Binding WebhookUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="34" VerticalAlignment="Center" />
                   </Grid>
@@ -258,7 +258,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="会话超时（秒）" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="超过这个时间未操作，会自动结束等待。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="超时未操作则自动结束等待。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <TextBox Grid.Column="1" Text="{Binding SessionTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="34" VerticalAlignment="Center" />
                   </Grid>
@@ -272,7 +272,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="全屏时隐藏" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="全屏使用其他应用时隐藏悬浮窗。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="其他应用全屏时自动隐藏。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <CheckBox Grid.Column="1" Style="{StaticResource SettingsToggleStyle}" IsChecked="{Binding HideWhenFullscreen, Mode=TwoWay}" />
                   </Grid>
@@ -296,7 +296,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="HUD 样式" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="经典/紧凑为信息条；悬浮球为可拖拽状态球，展开从球生长。待办时球周角标与光环提示。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="经典/紧凑为信息条；悬浮球可拖拽，有待办时会提示。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                       <ComboBox SelectedValue="{Binding HudDensityMode, Mode=TwoWay}" SelectedValuePath="Tag" MinHeight="34">
@@ -323,7 +323,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="面板高度模式" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="自动会随内容调整，固定会保持高度不变，紧凑会占更少空间。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="自动随内容变化；固定保持高度；紧凑更省空间。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <ComboBox Grid.Column="1" SelectedValue="{Binding PanelHeightMode, Mode=TwoWay}" SelectedValuePath="Tag" VerticalAlignment="Center" MinHeight="34">
                       <ComboBoxItem Content="自动" Tag="auto" />
@@ -341,7 +341,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="完整显示最近消息" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="开启后，最近对话会显示完整文本。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="展开最近对话的完整文本。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <CheckBox Grid.Column="1" Style="{StaticResource SettingsToggleStyle}" IsChecked="{Binding ShowFullRecentMessages, Mode=TwoWay}" />
                   </Grid>
@@ -357,7 +357,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="启用音效" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="审批、完成等提醒会播放音效。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="审批、完成等事件播放提示音。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <CheckBox Grid.Column="1" Style="{StaticResource SettingsToggleStyle}" IsChecked="{Binding SoundEnabled, Mode=TwoWay}" />
                   </Grid>
@@ -371,7 +371,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="音量" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="调整提醒音效的音量。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="提示音音量。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding VolumePercent, Mode=TwoWay}" VerticalAlignment="Center" />
                   </Grid>
@@ -385,7 +385,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="智能抑制重复音效" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="短时间内相同音效只播放一次。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="短时间内相同提示音只响一次。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <CheckBox Grid.Column="1" Style="{StaticResource SettingsToggleStyle}" IsChecked="{Binding SmartSoundSuppression, Mode=TwoWay}" />
                   </Grid>
@@ -414,7 +414,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="切换悬浮窗" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="显示、展开或收起悬浮窗。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="显示或收起悬浮窗。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <TextBlock Grid.Column="1"
                                Text="{Binding TogglePanelHotkey}"
@@ -440,7 +440,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="批准当前审批" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="触发当前权限卡片的“允许一次”。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="批准当前待处理权限。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <TextBlock Grid.Column="1"
                                Text="{Binding ApproveHotkey}"
@@ -466,7 +466,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="拒绝当前审批" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="触发当前权限卡片的“拒绝”。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="拒绝当前待处理权限。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <TextBlock Grid.Column="1"
                                Text="{Binding DenyHotkey}"
@@ -501,7 +501,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="WSL 发行版" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="在所选发行版内安装/卸载 hook（与 Windows 连接独立）。首次打开下拉或点击「WSL 连接」时才会探测 WSL。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="在所选发行版连接工具，与 Windows 侧独立。首次使用时检测 WSL。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <ComboBox Grid.Column="1"
                               MinWidth="180"
@@ -555,7 +555,7 @@
 
                           <StackPanel Grid.Column="1">
                             <TextBlock Text="{Binding DisplayName}" Style="{StaticResource SettingsLabelStyle}" />
-                            <TextBlock Text="让 CodeIsland 接收该工具的状态。" Style="{StaticResource SettingsHelpStyle}" />
+                            <TextBlock Text="连接后接收该工具状态。" Style="{StaticResource SettingsHelpStyle}" />
                           </StackPanel>
 
                           <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -574,7 +574,7 @@
                                     Click="WslSourceToggle_Click"
                                     Padding="12,7"
                                     VerticalAlignment="Center"
-                                    ToolTip="在 WSL 发行版内安装/卸载 hook（与 Windows 连接独立；首次会探测 WSL）" />
+                                    ToolTip="在 WSL 中连接/断开（与 Windows 侧独立）" />
                           </StackPanel>
                         </Grid>
                       </Border>
@@ -614,7 +614,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="由本程序启动 CodeOrbit" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="开启后由 CodeIsland 托管启动本地 CodeOrbit；关闭后仅连接已有实例，不自动拉起。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="开启后自动启动本地 CodeOrbit；关闭则只连接已有实例。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <CheckBox Grid.Column="1"
                               Style="{StaticResource SettingsToggleStyle}"
@@ -630,7 +630,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="绑定地址" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="默认 127.0.0.1。填 0.0.0.0 时本机连接仍走 127.0.0.1；退出 HUD 不一定关闭共享实例。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="默认 127.0.0.1。填 0.0.0.0 可对外共享（见下方警告）。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <TextBox Grid.Column="1"
                              Text="{Binding ApiBindHost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -644,7 +644,7 @@
                         Visibility="{Binding ShowWildcardHostWarning, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
                   <StackPanel>
                     <TextBlock Text="共享绑定警告" Style="{StaticResource SettingsLabelStyle}" Foreground="#FFFFB4AF" />
-                    <TextBlock Text="0.0.0.0 / 通配地址表示对外共享监听。本机仍通过 127.0.0.1 连接；退出 CodeIsland 时不会强制关闭该共享实例。" Style="{StaticResource SettingsHelpStyle}" Foreground="#CCFFB4AF" />
+                    <TextBlock Text="通配地址会对外共享监听；本机仍走 127.0.0.1。退出应用不会强制关闭该实例。" Style="{StaticResource SettingsHelpStyle}" Foreground="#CCFFB4AF" />
                   </StackPanel>
                 </Border>
 
@@ -656,7 +656,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="端口" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="有效范围 1024–65535，默认 32145。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="范围 1024–65535，默认 32145。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <TextBox Grid.Column="1"
                              Text="{Binding ApiPortText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -668,7 +668,7 @@
                 <Border Style="{StaticResource SettingsCardStyle}">
                   <StackPanel>
                     <TextBlock Text="API Token" Style="{StaticResource SettingsLabelStyle}" />
-                    <TextBlock Text="用于鉴权的 Bearer Token。请勿分享到公开渠道；日志不会记录明文。" Style="{StaticResource SettingsHelpStyle}" />
+                    <TextBlock Text="连接鉴权用，请勿公开分享。" Style="{StaticResource SettingsHelpStyle}" />
                     <Grid Margin="0,10,0,0">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />

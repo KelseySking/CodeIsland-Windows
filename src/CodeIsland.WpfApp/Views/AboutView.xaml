@@ -15,14 +15,14 @@
     </StackPanel>
 
     <Border Style="{StaticResource SettingsCardStyle}" Padding="14">
-      <TextBlock Text="Windows 桌面 HUD，用于实时展示 AI 编程代理会话状态、权限审批和问答交互。WPF 迁移版专注于更顺滑的浮窗展开、收起与缩放动画。"
+      <TextBlock Text="实时展示 AI 编程代理的会话状态、权限审批与问答。"
                  FontSize="12" Foreground="#CCFFFFFF" TextWrapping="Wrap" TextAlignment="Center" />
     </Border>
 
     <Border Style="{StaticResource SettingsCardStyle}" Padding="14">
       <StackPanel>
         <TextBlock Text="更新检查" Style="{StaticResource SettingsLabelStyle}" />
-        <TextBlock Text="点击后会通过 GitHub Releases API 检查最新版本，并显示下载入口或错误原因。" Style="{StaticResource SettingsHelpStyle}" />
+        <TextBlock Text="从 GitHub 检查是否有新版本。" Style="{StaticResource SettingsHelpStyle}" />
         <Grid Margin="0,12,0,0">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
