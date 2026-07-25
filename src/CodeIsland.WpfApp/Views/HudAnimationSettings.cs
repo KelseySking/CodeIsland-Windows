@@ -19,8 +19,8 @@ internal readonly record struct HudAnimationSettings(
         new Duration(TimeSpan.FromMilliseconds(180)),
         AllowsShellMorph: true,
         AllowsContentMotion: true,
-        UsesSnapshotLayerForShrink: true,
-        ContentSlideOffset: 10d);
+        UsesSnapshotLayerForShrink: false,
+        ContentSlideOffset: 0d);
 
     public static HudAnimationSettings LowTierRenderer { get; } = new(
         new Duration(TimeSpan.FromMilliseconds(210)),
@@ -28,8 +28,8 @@ internal readonly record struct HudAnimationSettings(
         new Duration(TimeSpan.FromMilliseconds(130)),
         AllowsShellMorph: true,
         AllowsContentMotion: true,
-        UsesSnapshotLayerForShrink: true,
-        ContentSlideOffset: 6d);
+        UsesSnapshotLayerForShrink: false,
+        ContentSlideOffset: 0d);
 
     public static HudAnimationSettings ForCurrentRenderer()
     {

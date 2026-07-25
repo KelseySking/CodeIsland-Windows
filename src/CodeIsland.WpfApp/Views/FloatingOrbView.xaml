@@ -48,7 +48,7 @@
       </Border>
     </Grid>
 
-    <!-- Session count: fully inside canvas, not clipped -->
+    <!-- Session count only. Pending is signaled by ring pulse, not a "!" badge. -->
     <Border MinWidth="16"
             Height="16"
             Padding="4,0"
@@ -59,23 +59,6 @@
             Background="#FFF0A12B"
             Visibility="{Binding HasSessions, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
       <TextBlock Text="{Binding ActiveSessionCount}"
-                 FontSize="10"
-                 FontWeight="Bold"
-                 Foreground="White"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center" />
-    </Border>
-
-    <Border MinWidth="16"
-            Height="16"
-            Padding="4,0"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Top"
-            Margin="0,2,2,0"
-            CornerRadius="8"
-            Background="#FFFF8A3D"
-            Visibility="{Binding HasPendingAction, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
-      <TextBlock Text="!"
                  FontSize="10"
                  FontWeight="Bold"
                  Foreground="White"

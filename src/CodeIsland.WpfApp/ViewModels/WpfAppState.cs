@@ -61,6 +61,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private bool _hudVisualRefreshPending;
     private bool _hudQuestionOptionsRefreshPending;
     private bool _hudSessionItemsRefreshPending;
+    private bool _isPendingPinned;
 
     public WpfAppState(SettingsManager settings, IWpfRuntimeClient runtimeClient, WpfWebhookNotifier? webhookNotifier = null)
     {
@@ -75,6 +76,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         DenyCommand = new RelayCommand(Deny);
         DismissPermissionCommand = new RelayCommand(DismissPermission);
         DismissQuestionCommand = new RelayCommand(DismissQuestion);
+        TogglePendingPinCommand = new RelayCommand(TogglePendingPin);
         SubmitQuestionCommand = new RelayCommand(_ => SubmitQuestion(QuestionAnswer));
         SelectQuestionOptionCommand = new RelayCommand(parameter => HandleQuestionOption(parameter as WpfQuestionOptionViewModel));
         OpenSessionCommand = new RelayCommand(parameter => OpenSession(parameter as string));
@@ -130,6 +132,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         _selectedHudItemId = null;
         _selectedPendingActionId = null;
         _selectedPendingActionKind = null;
+        IsPendingPinned = false;
         _pendingActionRevision++;
         QuestionAnswer = "";
 
@@ -226,6 +229,19 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     public string PendingActionText => PendingKind switch { WpfPendingKind.Permission => "等待审批", WpfPendingKind.Question => "等待回答", _ => "" };
     public string PendingActionShortText => PendingKind switch { WpfPendingKind.Permission => "审批", WpfPendingKind.Question => "问答", _ => "" };
     public int PendingActionRevision => _pendingActionRevision;
+    public bool IsPendingPinned
+    {
+        get => _isPendingPinned;
+        private set
+        {
+            if (_isPendingPinned == value)
+                return;
+            _isPendingPinned = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PendingPinButtonText));
+        }
+    }
+    public string PendingPinButtonText => IsPendingPinned ? "取消钉住" : "钉住";
     public bool IsSideCollapsed => IsCollapsed && !IsOrbHudMode && WpfHudDisplayPosition.IsSideCenter(_settings.Get("display_position", WpfHudDisplayPosition.Default));
     public bool IsHorizontalCollapsed => IsCollapsed && !IsSideCollapsed && !IsOrbHudMode;
     public bool IsCompactHudMode => WpfHudDensityMode.IsCompact(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
@@ -294,6 +310,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     public ICommand DenyCommand { get; }
     public ICommand DismissPermissionCommand { get; }
     public ICommand DismissQuestionCommand { get; }
+    public ICommand TogglePendingPinCommand { get; }
     public ICommand SubmitQuestionCommand { get; }
     public ICommand SelectQuestionOptionCommand { get; }
     public ICommand OpenSessionCommand { get; }
@@ -792,7 +809,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         _completionSessionId = sessionId;
         SurfaceKind = WpfHudSurfaceKind.CompletionCard;
         _completionTimer?.Dispose();
-        _completionTimer = new System.Threading.Timer(_ => System.Windows.Application.Current.Dispatcher.Invoke(DismissCompletion), null, TimeSpan.FromSeconds(5), Timeout.InfiniteTimeSpan);
+        _completionTimer = new System.Threading.Timer(_ => System.Windows.Application.Current.Dispatcher.Invoke(DismissCompletion), null, TimeSpan.FromSeconds(3), Timeout.InfiniteTimeSpan);
     }
 
     private void ClearCompletionCardForPendingAction()
@@ -830,7 +847,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             return;
 
         _completionTimer?.Dispose();
-        _completionTimer = new System.Threading.Timer(_ => System.Windows.Application.Current.Dispatcher.Invoke(DismissCompletion), null, TimeSpan.FromSeconds(5), Timeout.InfiniteTimeSpan);
+        _completionTimer = new System.Threading.Timer(_ => System.Windows.Application.Current.Dispatcher.Invoke(DismissCompletion), null, TimeSpan.FromSeconds(3), Timeout.InfiniteTimeSpan);
     }
 
     public void Approve(bool always)
@@ -1026,6 +1043,8 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     {
         _selectedPendingActionId = null;
         _selectedPendingActionKind = null;
+        if (!HasPendingAction)
+            IsPendingPinned = false;
         RebuildHudListItems();
 
         if (SurfaceKind == WpfHudSurfaceKind.HudDetail)
@@ -1045,6 +1064,17 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
             SurfaceKind = WpfHudSurfaceKind.Collapsed;
         RefreshQuestionOptions();
         RefreshAll();
+    }
+
+    public void TogglePendingPin()
+    {
+        if (!HasPendingAction)
+        {
+            IsPendingPinned = false;
+            return;
+        }
+
+        IsPendingPinned = !IsPendingPinned;
     }
 
     private static bool HasCompletionContent(SessionSnapshot session) =>
@@ -1585,6 +1615,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     private void RefreshAllCore()
     {
+        if (!HasPendingAction)
+            IsPendingPinned = false;
+
         RebuildHudListItems();
         OnPropertyChanged(string.Empty);
         OnPropertyChanged(nameof(ShouldShowPendingAlert));

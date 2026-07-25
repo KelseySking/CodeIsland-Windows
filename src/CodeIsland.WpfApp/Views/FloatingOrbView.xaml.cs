@@ -140,8 +140,15 @@ public partial class FloatingOrbView
 
         var duration = profile == MotionProfile.Idle
             ? TimeSpan.FromSeconds(3d)
-            : TimeSpan.FromSeconds(1d);
-        var scalePeak = profile == MotionProfile.Working ? 1.015d : 1.02d;
+            : profile == MotionProfile.Working
+                ? TimeSpan.FromSeconds(0.85d)
+                : TimeSpan.FromSeconds(1.1d);
+        var scalePeak = profile switch
+        {
+            MotionProfile.Working => 1.04d,
+            MotionProfile.Waiting => 1.01d,
+            _ => 1.02d
+        };
 
         _mascotMotionStoryboard = new Storyboard
         {
@@ -152,9 +159,9 @@ public partial class FloatingOrbView
         AddPulse(_mascotMotionStoryboard, _mascotScale!, ScaleTransform.ScaleYProperty, 1d, scalePeak, duration);
 
         if (profile == MotionProfile.Working)
-            AddPulse(_mascotMotionStoryboard, _mascotTranslate!, TranslateTransform.YProperty, 0d, -1d, duration);
+            AddPulse(_mascotMotionStoryboard, _mascotTranslate!, TranslateTransform.YProperty, 0d, -3d, duration);
         else if (profile == MotionProfile.Waiting)
-            AddPulse(_mascotMotionStoryboard, MascotHost, UIElement.OpacityProperty, 1d, 0.8d, duration);
+            AddPulse(_mascotMotionStoryboard, MascotHost, UIElement.OpacityProperty, 1d, 0.65d, duration);
 
         _activeMotionProfile = profile;
         _mascotMotionStoryboard.Begin(this, HandoffBehavior.SnapshotAndReplace, true);

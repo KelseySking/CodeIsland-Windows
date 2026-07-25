@@ -34,10 +34,12 @@ public partial class HudWindow : Window
     private const double OrbShellPadding = 0d;
     private const double OrbCornerRadius = 12d;
     private const double OrbDragThreshold = 5d;
-    private const int OrbHoverOpenMilliseconds = 300;
+    // Open snappy + symmetric across densities; close deliberately duller (see 07-25-hud-hover-fold-timing).
+    private const int OrbHoverOpenMilliseconds = 280;
     private const int PendingHoverOpenMilliseconds = 280;
-    private const int ClassicHoverOpenMilliseconds = 360;
-    private const int CompactHoverOpenMilliseconds = 520;
+    private const int ClassicHoverOpenMilliseconds = 280;
+    private const int CompactHoverOpenMilliseconds = 280;
+    private const int SessionListHoverCloseMilliseconds = 550;
     private const double MinPendingCardHeight = 220d;
     private const double MinCompletionCardHeight = 260d;
     private const double MinHudDetailHeight = 300d;
@@ -45,7 +47,7 @@ public partial class HudWindow : Window
     private const double WorkAreaMargin = 40d;
     private const double TransitionSizeTolerance = 1d;
     private const int PendingTransitionMilliseconds = 210;
-    private const int PendingAutoCollapseSeconds = 5;
+    private const int PendingAutoCollapseSeconds = 8;
     private static readonly IntPtr HwndTopmost = new(-1);
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_SHOWWINDOW = 0x0040;
@@ -114,7 +116,7 @@ public partial class HudWindow : Window
         _morphAnimator = new HudMorphAnimator(Shell, ShellScale, ShellTranslate, ShellSnapshot, SnapshotScale, SnapshotTranslate);
         DataContext = state;
 
-        _hoverOpenTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(360) };
+        _hoverOpenTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ClassicHoverOpenMilliseconds) };
         _hoverOpenTimer.Tick += (_, _) =>
         {
             _hoverOpenTimer.Stop();
@@ -129,7 +131,7 @@ public partial class HudWindow : Window
                 _state.ShowSessionList();
         };
 
-        _hoverCloseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _hoverCloseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(SessionListHoverCloseMilliseconds) };
         _hoverCloseTimer.Tick += (_, _) =>
         {
             _hoverCloseTimer.Stop();
@@ -148,6 +150,8 @@ public partial class HudWindow : Window
         {
             _pendingAutoCollapseTimer.Stop();
             if (IsShellTransitionProtected())
+                return;
+            if (_state.IsPendingPinned)
                 return;
 
             if (CanShowFoldablePendingLayer() && _pendingLayerExpanded && !IsPointerInsideHudWindowBounds())
@@ -290,6 +294,15 @@ public partial class HudWindow : Window
 
     private void OnStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(WpfAppState.IsPendingPinned) or nameof(WpfAppState.PendingPinButtonText))
+        {
+            if (_state.IsPendingPinned)
+                _pendingAutoCollapseTimer.Stop();
+            else
+                RestartPendingAutoCollapse();
+            return;
+        }
+
         if (_shellTransitionInProgress)
         {
             _renderAfterShellTransition = true;
@@ -679,29 +692,20 @@ public partial class HudWindow : Window
 
         var animationSettings = GetHudAnimationSettings();
         var previousLayout = CaptureCurrentLayout();
-        var previousPendingExpanded = _pendingLayerExpanded;
         _pendingLayerExpanded = expanded;
         var targetLayout = CalculateWindowLayout();
         var transitionKind = ResolveShellTransitionKind(previousLayout, targetLayout);
+
+        // Collapse pending: deterministic hard land (no shrink morph / empty-shell races).
         if (transitionKind == ShellTransitionKind.Shrink)
         {
-            _pendingLayerExpanded = previousPendingExpanded;
-            var transitionPlan = PrepareShellTransition(
-                previousLayout,
-                targetLayout,
-                animationSettings.PendingDuration,
-                transitionKind,
-                useCollapsedSource: true,
-                completedAction: () =>
-                {
-                    _pendingLayerExpanded = expanded;
-                    RenderPending(animationSettings);
-                    UpdateCollapsedBarOrientation();
-                    UpdateSurfaceHostPresentation();
-                    UpdateWindowBounds();
-                    Shell.UpdateLayout();
-                });
-            StartPreparedShellTransition(transitionPlan);
+            _morphAnimator.Stop(clearClip: true);
+            _morphAnimator.ResetShell();
+            RenderPending(animationSettings);
+            UpdateCollapsedBarOrientation();
+            UpdateSurfaceHostPresentation();
+            UpdateWindowBounds();
+            Shell.UpdateLayout();
             return;
         }
 
@@ -1150,6 +1154,8 @@ public partial class HudWindow : Window
     private void RestartPendingAutoCollapse()
     {
         _pendingAutoCollapseTimer.Stop();
+        if (_state.IsPendingPinned)
+            return;
         if (CanShowFoldablePendingLayer() && _pendingLayerExpanded && !IsPointerInsideHudWindowBounds())
             _pendingAutoCollapseTimer.Start();
     }
