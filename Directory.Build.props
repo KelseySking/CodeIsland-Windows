@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <CodeIslandVersion>1.3.0</CodeIslandVersion>
+    <CodeIslandVersion>1.3.1</CodeIslandVersion>
     <Version>$(CodeIslandVersion)</Version>
     <AssemblyVersion>$(CodeIslandVersion).0</AssemblyVersion>
     <FileVersion>$(CodeIslandVersion).0</FileVersion>
