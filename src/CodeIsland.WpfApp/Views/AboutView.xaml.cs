@@ -12,9 +12,9 @@ namespace CodeIsland.WpfApp.Views;
 public partial class AboutView : UserControl, INotifyPropertyChanged
 {
     private const string GitHubRepositoryUrl = "https://github.com/KelseySking/CodeIsland-Windows";
+    private const string LatestReleaseUrl = "https://github.com/KelseySking/CodeIsland-Windows/releases/latest";
     private readonly WpfUpdateChecker _updateChecker = new();
     private string _updateStatusText;
-    private string _releaseNotesPreview = "";
     private string _downloadUrl = "";
     private bool _isCheckingUpdate;
 
@@ -44,19 +44,6 @@ public partial class AboutView : UserControl, INotifyPropertyChanged
         }
     }
 
-    public string ReleaseNotesPreview
-    {
-        get => _releaseNotesPreview;
-        private set
-        {
-            if (string.Equals(_releaseNotesPreview, value, StringComparison.Ordinal)) return;
-            _releaseNotesPreview = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(HasReleaseNotes));
-        }
-    }
-
-    public bool HasReleaseNotes => !string.IsNullOrWhiteSpace(ReleaseNotesPreview);
     public bool HasDownloadUrl => !string.IsNullOrWhiteSpace(_downloadUrl);
     public bool CanCheckUpdate => !_isCheckingUpdate;
 
@@ -73,7 +60,6 @@ public partial class AboutView : UserControl, INotifyPropertyChanged
         OnPropertyChanged(nameof(CanCheckUpdate));
         (CheckUpdateCommand as RelayCommand)?.RaiseCanExecuteChanged();
         UpdateStatusText = "正在检查更新...";
-        ReleaseNotesPreview = "";
         SetDownloadUrl("");
 
         var result = await _updateChecker.CheckForUpdateAsync();
@@ -93,13 +79,12 @@ public partial class AboutView : UserControl, INotifyPropertyChanged
         if (result.HasUpdate)
         {
             UpdateStatusText = $"发现新版本 {latest}，当前版本 {current}";
-            SetDownloadUrl(!string.IsNullOrWhiteSpace(result.DownloadUrl) ? result.DownloadUrl : result.ReleaseUrl);
-            ReleaseNotesPreview = BuildReleaseNotesPreview(result.ReleaseNotes);
+            SetDownloadUrl(ResolveLatestReleasePageUrl(result.ReleaseUrl));
         }
         else
         {
             UpdateStatusText = $"当前已是最新版本（{current}）";
-            SetDownloadUrl(!string.IsNullOrWhiteSpace(result.ReleaseUrl) ? result.ReleaseUrl : GitHubRepositoryUrl);
+            SetDownloadUrl(ResolveLatestReleasePageUrl(result.ReleaseUrl));
         }
     }
 
@@ -110,14 +95,8 @@ public partial class AboutView : UserControl, INotifyPropertyChanged
         OnPropertyChanged(nameof(HasDownloadUrl));
     }
 
-    private static string BuildReleaseNotesPreview(string releaseNotes)
-    {
-        if (string.IsNullOrWhiteSpace(releaseNotes))
-            return "该版本没有发布说明。";
-
-        var trimmed = releaseNotes.Trim();
-        return trimmed.Length <= 480 ? trimmed : trimmed[..480] + "...";
-    }
+    private static string ResolveLatestReleasePageUrl(string releaseUrl) =>
+        !string.IsNullOrWhiteSpace(releaseUrl) ? releaseUrl : LatestReleaseUrl;
 
     private static void OpenUrl(string url)
     {

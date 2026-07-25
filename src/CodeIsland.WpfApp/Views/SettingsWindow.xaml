@@ -727,31 +727,12 @@
               </StackPanel>
             </ScrollViewer>
 
-            <!-- 关于（含 CodeOrbit 版本） -->
+            <!-- 关于 -->
             <ScrollViewer x:Name="SectionAbout"
                           Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled">
-              <StackPanel>
-                <views:AboutView Margin="0,0,0,8" />
-
-                <TextBlock Text="CodeOrbit" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0,8,0,10" />
-
-                <Border Style="{StaticResource SettingsCardStyle}">
-                  <StackPanel>
-                    <TextBlock Text="当前版本" Style="{StaticResource SettingsLabelStyle}" HorizontalAlignment="Center" />
-                    <TextBlock Text="{Binding RuntimeProduct}" FontSize="12" Foreground="#80FFFFFF" HorizontalAlignment="Center" Margin="0,4,0,0" />
-                    <TextBlock Text="{Binding CurrentVersion}" FontSize="20" FontWeight="Medium" Foreground="{StaticResource HudTextBrush}" HorizontalAlignment="Center" Margin="0,8,0,0" />
-                  </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource SettingsCardStyle}">
-                  <StackPanel>
-                    <TextBlock Text="版本发布" Style="{StaticResource SettingsLabelStyle}" HorizontalAlignment="Center" />
-                    <Button Content="查看 GitHub 发布" Click="OpenGitHubReleases_Click" HorizontalAlignment="Center" Padding="20,8" Margin="0,12,0,0" />
-                  </StackPanel>
-                </Border>
-              </StackPanel>
+              <views:AboutView />
             </ScrollViewer>
           </Grid>
         </Border>

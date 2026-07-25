@@ -17,7 +17,6 @@ namespace CodeIsland.WpfApp.Views;
 
 public partial class SettingsWindow : Window, INotifyPropertyChanged
 {
-    private const string GitHubReleasesUrl = "https://github.com/KelseySking/CodeOrbit-Rust/releases";
     private const string AboutSectionId = "about";
     private const string RecordIdleLabel = "点击录制";
     private const string RecordActiveLabel = "按下组合键…";
@@ -64,10 +63,6 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private static readonly TimeSpan WslListTimeout = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan WslStatusTimeout = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan WslOperationTimeout = TimeSpan.FromSeconds(60);
-
-    // CodeOrbit 版本信息
-    private string _runtimeProduct = "";
-    private string _currentVersion = "";
 
     // CodeOrbit 连接设置
     private bool _managedLaunchEnabled = true;
@@ -294,29 +289,6 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         {
             if (_runtimeStatusColor == value) return;
             _runtimeStatusColor = value;
-            OnPropertyChanged();
-        }
-    }
-
-    // 关于页 - 更新检测
-    public string RuntimeProduct
-    {
-        get => _runtimeProduct;
-        set
-        {
-            if (string.Equals(_runtimeProduct, value, StringComparison.Ordinal)) return;
-            _runtimeProduct = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public string CurrentVersion
-    {
-        get => _currentVersion;
-        set
-        {
-            if (string.Equals(_currentVersion, value, StringComparison.Ordinal)) return;
-            _currentVersion = value;
             OnPropertyChanged();
         }
     }
@@ -1077,9 +1049,6 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                 await Dispatcher.InvokeAsync(() =>
                 {
                     RuntimeVersion = $"v{version.Version}";
-                    // 绑定属性名历史保留；展示文案统一为 CodeOrbit（清理历史「CodeOrbit Runtime」混用）
-                    RuntimeProduct = SanitizeCodeOrbitProduct(version.Product);
-                    CurrentVersion = version.Version;
                     RuntimeConnectionStatus = $"CodeOrbit 已连接 {RuntimeVersion}";
                     RuntimeStatusColor = System.Windows.Media.Brushes.ForestGreen;
                     OnPropertyChanged(nameof(CodeOrbitStatusHelp));
@@ -1803,32 +1772,6 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         }
     }
 
-    /// <summary>
-    /// 将 /api/version 的 product 字段规范为用户可见的 CodeOrbit 产品名。
-    /// </summary>
-    private static string SanitizeCodeOrbitProduct(string? product)
-    {
-        if (string.IsNullOrWhiteSpace(product))
-            return "CodeOrbit";
-
-        var trimmed = product.Trim();
-        if (string.Equals(trimmed, "CodeOrbit Runtime", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(trimmed, "CodeIsland Runtime", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(trimmed, "Runtime", StringComparison.OrdinalIgnoreCase))
-            return "CodeOrbit";
-
-        // 历史混用：xxx Runtime → 去掉尾部 Runtime 产品后缀
-        if (trimmed.EndsWith(" Runtime", StringComparison.OrdinalIgnoreCase))
-        {
-            var withoutSuffix = trimmed[..^" Runtime".Length].TrimEnd();
-            if (string.Equals(withoutSuffix, "CodeOrbit", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(withoutSuffix, "CodeIsland", StringComparison.OrdinalIgnoreCase))
-                return "CodeOrbit";
-        }
-
-        return trimmed;
-    }
-
     private static string BuildOperationFailureText(string displayName, bool wasInstalled, string? message, string? code = null)
     {
         var operationText = wasInstalled ? "断开" : "连接";
@@ -1892,20 +1835,4 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     public sealed record WslDistroItem(string Name, string Label);
 
     private sealed record WslStatusView(bool? Installed, bool ProbeFailed, string? Error);
-
-    private void OpenGitHubReleases_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = GitHubReleasesUrl,
-                UseShellExecute = true
-            });
-        }
-        catch
-        {
-            FeedbackText = "无法打开浏览器，请手动访问 GitHub Releases";
-        }
-    }
 }

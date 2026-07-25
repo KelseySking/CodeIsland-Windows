@@ -28,21 +28,22 @@
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
-          <StackPanel Grid.Column="0">
-            <TextBlock Text="{Binding UpdateStatusText}" FontSize="12" Foreground="#D9FFFFFF" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding ReleaseNotesPreview}" FontSize="11" Foreground="#80FFFFFF" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="{Binding HasReleaseNotes, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
-          </StackPanel>
+          <TextBlock Grid.Column="0" Text="{Binding UpdateStatusText}" FontSize="12" Foreground="#D9FFFFFF" TextWrapping="Wrap" VerticalAlignment="Center" />
           <Button Grid.Column="1" Content="检查更新" Command="{Binding CheckUpdateCommand}" IsEnabled="{Binding CanCheckUpdate}" Padding="14,7" Margin="12,0,0,0" VerticalAlignment="Top" />
         </Grid>
-        <Button Content="打开下载页面" Command="{Binding OpenDownloadCommand}" HorizontalAlignment="Left" Margin="0,12,0,0" Visibility="{Binding HasDownloadUrl, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+        <Button Content="打开最新发行版页面" Command="{Binding OpenDownloadCommand}" HorizontalAlignment="Left" Margin="0,12,0,0" Visibility="{Binding HasDownloadUrl, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
       </StackPanel>
     </Border>
 
     <Border Style="{StaticResource SettingsCardStyle}" Padding="14">
-      <StackPanel>
-        <TextBlock Text="项目链接" Style="{StaticResource SettingsLabelStyle}" />
-        <Button Content="GitHub：KelseySking/CodeIsland-Windows" Command="{Binding OpenGitHubCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" />
-      </StackPanel>
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Grid.Column="0" Text="项目链接" Style="{StaticResource SettingsLabelStyle}" VerticalAlignment="Center" Margin="0,0,12,0" />
+        <Button Grid.Column="1" Content="https://github.com/KelseySking/CodeIsland-Windows" Command="{Binding OpenGitHubCommand}" HorizontalAlignment="Left" VerticalAlignment="Center" />
+      </Grid>
     </Border>
 
     <Border Style="{StaticResource SettingsCardStyle}" Padding="14">
