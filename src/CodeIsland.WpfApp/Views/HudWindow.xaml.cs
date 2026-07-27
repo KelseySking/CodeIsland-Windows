@@ -15,6 +15,7 @@ public partial class HudWindow : Window
 {
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_NOACTIVATE = 0x08000000;
+    private const int WS_EX_TRANSPARENT = 0x00000020;
     private const double ShellPadding = 20d;
     private const double CompactCollapsedShellPadding = 8d;
     private const double PendingLayerGap = 8d;
@@ -31,6 +32,8 @@ public partial class HudWindow : Window
     private const double CompactCollapsedSideHeight = 114d;
     private const double CompactHudContentWidth = 480d;
     private const double OrbCollapsedSize = 48d;
+    private const double PetCollapsedWidth = PetSpriteControl.FrameWidth;
+    private const double PetCollapsedHeight = PetSpriteControl.FrameHeight;
     private const double OrbShellPadding = 0d;
     private const double OrbCornerRadius = 12d;
     private const double OrbDragThreshold = 5d;
@@ -76,6 +79,7 @@ public partial class HudWindow : Window
 
     private readonly WpfAppState _state;
     private readonly SettingsManager _settings;
+    private readonly WpfPetCatalogService _petCatalog;
     private readonly HudMorphAnimator _morphAnimator;
     private readonly DispatcherTimer _hoverOpenTimer;
     private readonly DispatcherTimer _hoverCloseTimer;
@@ -83,6 +87,7 @@ public partial class HudWindow : Window
     private readonly DispatcherTimer _transitionGraceTimer;
     private readonly DispatcherTimer _fullscreenTimer;
     private readonly DispatcherTimer _deferredSessionListShrinkTimer;
+    private readonly DispatcherTimer _petHitTestTimer;
     private Type? _currentSurfaceType;
     private Type? _currentPendingType;
     private string? _currentPendingKey;
@@ -107,12 +112,14 @@ public partial class HudWindow : Window
     private double _orbDragOriginLeft;
     private double _orbDragOriginTop;
     private string _currentHudDensityMode = string.Empty;
+    private bool _petWindowTransparent;
 
-    public HudWindow(WpfAppState state, SettingsManager settings)
+    public HudWindow(WpfAppState state, SettingsManager settings, WpfPetCatalogService petCatalog)
     {
         InitializeComponent();
         _state = state;
         _settings = settings;
+        _petCatalog = petCatalog;
         _morphAnimator = new HudMorphAnimator(Shell, ShellScale, ShellTranslate, ShellSnapshot, SnapshotScale, SnapshotTranslate);
         DataContext = state;
 
@@ -178,11 +185,15 @@ public partial class HudWindow : Window
         _fullscreenTimer.Tick += (_, _) => ApplyFullscreenVisibility();
         _fullscreenTimer.Start();
 
+        _petHitTestTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        _petHitTestTimer.Tick += (_, _) => UpdatePetClickThrough();
+
         Loaded += (_, _) =>
         {
             ApplyNoActivate();
             Render();
             PositionWindow();
+            _petHitTestTimer.Start();
         };
         MouseEnter += OnMouseEnter;
         MouseLeave += OnMouseLeave;
@@ -194,6 +205,17 @@ public partial class HudWindow : Window
         MouseLeftButtonUp += OnMouseLeftButtonUp;
         _state.PropertyChanged += OnStatePropertyChanged;
         _settings.SettingChanged += OnSettingChanged;
+        _petCatalog.CatalogChanged += OnPetCatalogChanged;
+    }
+
+    private void OnPetCatalogChanged(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (SurfaceHost.Content is FloatingPetView pet)
+                pet.ReloadDefaultPet();
+            QueueRender();
+        }, DispatcherPriority.Render);
     }
 
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
@@ -259,6 +281,7 @@ public partial class HudWindow : Window
         _shellTransitionGraceActive = false;
         _renderAfterShellTransition = false;
         ReleaseShellTransitionHudVisualUpdateDeferral();
+        SetPetWindowTransparent(false);
         Hide();
     }
 
@@ -343,7 +366,7 @@ public partial class HudWindow : Window
             WpfHudSurfaceKind.SessionList => typeof(SessionListView),
             WpfHudSurfaceKind.HudDetail => typeof(HudDetailView),
             WpfHudSurfaceKind.CompletionCard => typeof(CompletionCardView),
-            _ => IsOrbHudMode() ? typeof(FloatingOrbView) : typeof(CollapsedBarView)
+            _ => IsPetHudMode() ? typeof(FloatingPetView) : IsOrbHudMode() ? typeof(FloatingOrbView) : typeof(CollapsedBarView)
         };
         var previousSurfaceType = _currentSurfaceType;
         var surfaceChanged = _currentSurfaceType != next;
@@ -353,6 +376,8 @@ public partial class HudWindow : Window
             !string.Equals(_currentHudDensityMode, nextDensityMode, StringComparison.Ordinal);
         _currentHudDensityMode = nextDensityMode;
         var expectedPendingExpanded = GetExpectedPendingLayerExpanded();
+        if (next != typeof(FloatingPetView) || expectedPendingExpanded)
+            SetPetWindowTransparent(false);
         var pendingExpandedChanged = previousPendingExpanded != expectedPendingExpanded;
         var useCollapsedSource = ShouldUseCollapsedSource(previousSurfaceType, next);
 
@@ -397,7 +422,7 @@ public partial class HudWindow : Window
                 pendingExpandedChanged ||
                 (useSnapshotLayer && animationSettings.UsesSnapshotLayerForShrink);
             var revealCollapsedContentAfterShrink = deferTargetContentUntilCompleted &&
-                (next == typeof(CollapsedBarView) || next == typeof(FloatingOrbView));
+                (next == typeof(CollapsedBarView) || next == typeof(FloatingOrbView) || next == typeof(FloatingPetView));
             if (deferTargetContentUntilCompleted)
                 _pendingLayerExpanded = previousPendingExpanded;
 
@@ -494,7 +519,7 @@ public partial class HudWindow : Window
         Dispatcher.BeginInvoke(() =>
         {
             if (_state.SurfaceKind != WpfHudSurfaceKind.Collapsed ||
-                SurfaceHost.Content is not (CollapsedBarView or FloatingOrbView))
+                SurfaceHost.Content is not (CollapsedBarView or FloatingOrbView or FloatingPetView))
                 return;
 
             _morphAnimator.FadeIn(SurfaceHost, animationSettings.ContentDuration, slideOffset: 0d);
@@ -751,6 +776,8 @@ public partial class HudWindow : Window
             return new CollapsedBarView { IsVertical = collapsedIsVertical };
         if (type == typeof(FloatingOrbView))
             return new FloatingOrbView();
+        if (type == typeof(FloatingPetView))
+            return new FloatingPetView(_petCatalog);
 
         return Activator.CreateInstance(type)!;
     }
@@ -843,7 +870,9 @@ public partial class HudWindow : Window
         previousSurfaceType == typeof(CollapsedBarView) ||
         nextSurfaceType == typeof(CollapsedBarView) ||
         previousSurfaceType == typeof(FloatingOrbView) ||
-        nextSurfaceType == typeof(FloatingOrbView);
+        nextSurfaceType == typeof(FloatingOrbView) ||
+        previousSurfaceType == typeof(FloatingPetView) ||
+        nextSurfaceType == typeof(FloatingPetView);
 
     private (Rect InitialRect, Rect? MidRect, Rect FinalRect) CalculateShellMorphRects(
         WindowLayout previousLayout,
@@ -1000,7 +1029,7 @@ public partial class HudWindow : Window
 
     private WindowLayout CalculateCollapsedSourceLayout()
     {
-        if (IsOrbHudMode())
+        if (UsesFloatingAnchor())
         {
             var orbWidth = GetCollapsedHorizontalWidth();
             var orbHeight = GetCollapsedHorizontalHeight();
@@ -1270,7 +1299,7 @@ public partial class HudWindow : Window
 
     private double GetShellPadding()
     {
-        if (UseOrbCollapsedChrome())
+        if (UseFloatingCollapsedChrome())
             return OrbShellPadding;
         return UseCompactCollapsedChrome() ? CompactCollapsedShellPadding : ShellPadding;
     }
@@ -1278,13 +1307,13 @@ public partial class HudWindow : Window
     private bool UseCompactCollapsedChrome() =>
         IsCompactHudMode() && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded;
 
-    private bool UseOrbCollapsedChrome() =>
-        IsOrbHudMode() && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded;
+    private bool UseFloatingCollapsedChrome() =>
+        UsesFloatingAnchor() && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded;
 
     private void ApplyShellChrome()
     {
-        // Orb collapsed: no dark panel chrome. Pending color lives on FloatingOrbView, not Shell rim.
-        if (UseOrbCollapsedChrome())
+        // Floating collapsed surfaces draw their own pixels and do not use panel chrome.
+        if (UseFloatingCollapsedChrome())
         {
             Shell.Padding = new Thickness(0d);
             Shell.BorderThickness = new Thickness(0d);
@@ -1317,7 +1346,7 @@ public partial class HudWindow : Window
 
     private CornerRadius GetShellCornerRadius()
     {
-        if (UseOrbCollapsedChrome())
+        if (UseFloatingCollapsedChrome())
             return new CornerRadius(OrbCornerRadius);
         return UseCompactCollapsedChrome() && UseSideCollapsedLayout() ? new CornerRadius(21d) : new CornerRadius(18d);
     }
@@ -1354,10 +1383,10 @@ public partial class HudWindow : Window
     }
 
     private double GetCollapsedHorizontalWidth() =>
-        IsOrbHudMode() ? OrbCollapsedSize : IsCompactHudMode() ? CompactCollapsedHorizontalWidth : CollapsedHorizontalWidth;
+        IsPetHudMode() ? PetCollapsedWidth : IsOrbHudMode() ? OrbCollapsedSize : IsCompactHudMode() ? CompactCollapsedHorizontalWidth : CollapsedHorizontalWidth;
 
     private double GetCollapsedHorizontalHeight() =>
-        IsOrbHudMode() ? OrbCollapsedSize : IsCompactHudMode() ? CompactCollapsedHorizontalHeight : CollapsedHorizontalHeight;
+        IsPetHudMode() ? PetCollapsedHeight : IsOrbHudMode() ? OrbCollapsedSize : IsCompactHudMode() ? CompactCollapsedHorizontalHeight : CollapsedHorizontalHeight;
 
     private double GetCollapsedSideWidth() => IsCompactHudMode() ? CompactCollapsedSideWidth : CollapsedSideWidth;
 
@@ -1371,6 +1400,10 @@ public partial class HudWindow : Window
     private bool IsCompactHudMode() => WpfHudDensityMode.IsCompact(GetCurrentHudDensityMode());
 
     private bool IsOrbHudMode() => WpfHudDensityMode.IsOrb(GetCurrentHudDensityMode());
+
+    private bool IsPetHudMode() => WpfHudDensityMode.IsPet(GetCurrentHudDensityMode());
+
+    private bool UsesFloatingAnchor() => WpfHudDensityMode.UsesFloatingAnchor(GetCurrentHudDensityMode());
 
     private bool UsesCompactExpandedMetrics() =>
         WpfHudDensityMode.UsesCompactExpandedMetrics(GetCurrentHudDensityMode());
@@ -1516,7 +1549,7 @@ public partial class HudWindow : Window
 
     private (double Left, double Top) CalculateWindowPosition(double width, double height)
     {
-        if (IsOrbHudMode())
+        if (UsesFloatingAnchor())
             return CalculateOrbAnchoredWindowPosition(width, height);
 
         var position = WpfHudDisplayPosition.Normalize(_settings.Get("display_position", WpfHudDisplayPosition.Default));
@@ -1664,8 +1697,8 @@ public partial class HudWindow : Window
     {
         _settings.Set(WpfHudDensityMode.OrbLeftKey, left);
         _settings.Set(WpfHudDensityMode.OrbTopKey, top);
-        var width = GetCurrentWindowWidth() > 0 ? GetCurrentWindowWidth() : OrbCollapsedSize;
-        var height = GetCurrentWindowHeight() > 0 ? GetCurrentWindowHeight() : OrbCollapsedSize;
+        var width = GetCurrentWindowWidth() > 0 ? GetCurrentWindowWidth() : GetCollapsedHorizontalWidth();
+        var height = GetCurrentWindowHeight() > 0 ? GetCurrentWindowHeight() : GetCollapsedHorizontalHeight();
         var dpi = VisualTreeHelper.GetDpi(this);
         var scaleX = dpi.DpiScaleX > 0d ? dpi.DpiScaleX : 1d;
         var scaleY = dpi.DpiScaleY > 0d ? dpi.DpiScaleY : 1d;
@@ -1721,7 +1754,7 @@ public partial class HudWindow : Window
     private bool IsTopDisplayPosition() =>
         WpfHudDisplayPosition.Normalize(_settings.Get("display_position", WpfHudDisplayPosition.Default)) == WpfHudDisplayPosition.TopCenter;
     private bool UseSideCollapsedLayout() =>
-        !IsOrbHudMode() && IsSideCenterPosition() && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded;
+        !UsesFloatingAnchor() && IsSideCenterPosition() && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded;
 
     private bool IsPointerInsideHudWindowBounds()
     {
@@ -1757,6 +1790,7 @@ public partial class HudWindow : Window
             if (IsVisible || !_hiddenForFullscreen)
             {
                 _hiddenForFullscreen = true;
+                SetPetWindowTransparent(false);
                 Hide();
             }
             return;
@@ -1776,6 +1810,24 @@ public partial class HudWindow : Window
 
         _hoverCloseTimer.Stop();
         _pendingAutoCollapseTimer.Stop();
+
+        if (IsPetHudMode() && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed && !_pendingLayerExpanded)
+        {
+            if (SurfaceHost.Content is FloatingPetView pet && IsPointerOverVisiblePetPixel())
+            {
+                pet.PlayWave(() =>
+                {
+                    if (!IsPetHudMode() || _state.SurfaceKind != WpfHudSurfaceKind.Collapsed ||
+                        _orbDragging || !IsPointerOverVisiblePetPixel())
+                        return;
+                    if (_state.HasPendingAction && CanShowFoldablePendingLayer() && !_pendingLayerExpanded)
+                        SetPendingLayerExpanded(true);
+                    else if (!_state.HasPendingAction && _state.HasSessions)
+                        _state.ShowSessionList();
+                });
+            }
+            return;
+        }
 
         if (_state.HasPendingAction)
         {
@@ -1829,7 +1881,10 @@ public partial class HudWindow : Window
 
     private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (!CanStartOrbDrag())
+        if (!CanStartFloatingDrag())
+            return;
+
+        if (IsPetHudMode() && !IsPointerOverVisiblePetPixel())
             return;
 
         if (!GetCursorPos(out var cursor))
@@ -1860,12 +1915,14 @@ public partial class HudWindow : Window
 
         _orbDragMoved = true;
         _hoverOpenTimer.Stop();
+        if (SurfaceHost.Content is FloatingPetView pet)
+            pet.SetDragDirection(dx);
 
         var dpi = VisualTreeHelper.GetDpi(this);
         var scaleX = dpi.DpiScaleX > 0d ? dpi.DpiScaleX : 1d;
         var scaleY = dpi.DpiScaleY > 0d ? dpi.DpiScaleY : 1d;
-        var width = GetCurrentWindowWidth() > 0 ? GetCurrentWindowWidth() : OrbCollapsedSize;
-        var height = GetCurrentWindowHeight() > 0 ? GetCurrentWindowHeight() : OrbCollapsedSize;
+        var width = GetCurrentWindowWidth() > 0 ? GetCurrentWindowWidth() : GetCollapsedHorizontalWidth();
+        var height = GetCurrentWindowHeight() > 0 ? GetCurrentWindowHeight() : GetCollapsedHorizontalHeight();
         var nextLeft = _orbDragOriginLeft + dx / scaleX;
         var nextTop = _orbDragOriginTop + dy / scaleY;
         var area = GetOrbWorkAreaDip(nextLeft, nextTop, width, height);
@@ -1883,12 +1940,21 @@ public partial class HudWindow : Window
 
         var moved = _orbDragMoved;
         _orbDragging = false;
+        if (SurfaceHost.Content is FloatingPetView pet)
+            pet.EndDrag();
         if (IsMouseCaptured)
             ReleaseMouseCapture();
 
         if (moved)
         {
             PersistOrbPosition(Left, Top);
+            e.Handled = true;
+            return;
+        }
+
+        if (IsPetHudMode() && SurfaceHost.Content is FloatingPetView clickedPet)
+        {
+            clickedPet.PlayJump(OpenCollapsedFromFloatingClick);
             e.Handled = true;
             return;
         }
@@ -1910,16 +1976,16 @@ public partial class HudWindow : Window
         }
     }
 
-    private bool CanStartOrbDrag() =>
-        IsOrbHudMode()
+    private bool CanStartFloatingDrag() =>
+        UsesFloatingAnchor()
         && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed
         && !_pendingLayerExpanded
         && !IsShellTransitionProtected();
 
     private void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        // Orb mode handles click/drag in preview handlers.
-        if (IsOrbHudMode())
+        // Floating modes handle click/drag in preview handlers.
+        if (UsesFloatingAnchor())
             return;
 
         if (_state.SurfaceKind != WpfHudSurfaceKind.Collapsed)
@@ -1940,7 +2006,7 @@ public partial class HudWindow : Window
 
         _hoverOpenTimer.Interval = TimeSpan.FromMilliseconds(_state.HasPendingAction
             ? PendingHoverOpenMilliseconds
-            : IsOrbHudMode()
+            : UsesFloatingAnchor()
                 ? OrbHoverOpenMilliseconds
                 : IsCompactHudMode()
                     ? CompactHoverOpenMilliseconds
@@ -1956,6 +2022,61 @@ public partial class HudWindow : Window
         SetWindowLong(handle, GWL_EXSTYLE, style | WS_EX_NOACTIVATE);
     }
 
+    private void OpenCollapsedFromFloatingClick()
+    {
+        if (!IsPetHudMode() || _state.SurfaceKind != WpfHudSurfaceKind.Collapsed)
+            return;
+        _hoverOpenTimer.Stop();
+        if (!_state.HasPendingAction && _state.HasSessions)
+            _state.ShowSessionList();
+        else if (_state.HasPendingAction && CanShowFoldablePendingLayer() && !_pendingLayerExpanded)
+            SetPendingLayerExpanded(true);
+    }
+
+    private void UpdatePetClickThrough()
+    {
+        var shouldPassThrough = IsVisible
+            && IsPetHudMode()
+            && _state.SurfaceKind == WpfHudSurfaceKind.Collapsed
+            && !_pendingLayerExpanded
+            && !_orbDragging
+            && !IsShellTransitionProtected()
+            && !IsPointerOverVisiblePetPixel();
+        SetPetWindowTransparent(shouldPassThrough);
+    }
+
+    private bool IsPointerOverVisiblePetPixel()
+    {
+        if (SurfaceHost.Content is not FloatingPetView pet || !GetCursorPos(out var cursor))
+            return false;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || !GetWindowRect(handle, out var rect) || rect.Right <= rect.Left || rect.Bottom <= rect.Top)
+            return false;
+        if (cursor.X < rect.Left || cursor.X >= rect.Right || cursor.Y < rect.Top || cursor.Y >= rect.Bottom)
+            return false;
+
+        var local = new System.Windows.Point(
+            (cursor.X - rect.Left) * PetCollapsedWidth / (rect.Right - rect.Left),
+            (cursor.Y - rect.Top) * PetCollapsedHeight / (rect.Bottom - rect.Top));
+        return pet.IsVisiblePixelAt(local);
+    }
+
+    private void SetPetWindowTransparent(bool transparent)
+    {
+        if (_petWindowTransparent == transparent)
+            return;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+        {
+            if (!transparent)
+                _petWindowTransparent = false;
+            return;
+        }
+        var style = GetWindowLong(handle, GWL_EXSTYLE);
+        SetWindowLong(handle, GWL_EXSTYLE, transparent ? style | WS_EX_TRANSPARENT : style & ~WS_EX_TRANSPARENT);
+        _petWindowTransparent = transparent;
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         _hoverOpenTimer.Stop();
@@ -1964,6 +2085,8 @@ public partial class HudWindow : Window
         _transitionGraceTimer.Stop();
         _deferredSessionListShrinkTimer.Stop();
         _fullscreenTimer.Stop();
+        _petHitTestTimer.Stop();
+        SetPetWindowTransparent(false);
         ClearWindowLayoutAnimations();
         MouseEnter -= OnMouseEnter;
         MouseLeave -= OnMouseLeave;
@@ -1975,6 +2098,7 @@ public partial class HudWindow : Window
         MouseLeftButtonUp -= OnMouseLeftButtonUp;
         _state.PropertyChanged -= OnStatePropertyChanged;
         _settings.SettingChanged -= OnSettingChanged;
+        _petCatalog.CatalogChanged -= OnPetCatalogChanged;
         ReleaseShellTransitionHudVisualUpdateDeferral();
         base.OnClosed(e);
     }

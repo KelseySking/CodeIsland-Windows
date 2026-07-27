@@ -22,6 +22,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private const string RecordActiveLabel = "按下组合键…";
 
     private readonly SettingsManager _settings;
+    private readonly WpfPetCatalogService _petCatalog;
     private IWpfSourceService _sourceService;
     private readonly Dictionary<string, FrameworkElement> _sections = new(StringComparer.Ordinal);
     private string _activeSectionId = "general";
@@ -45,6 +46,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private bool _showFullRecentMessages;
     private double _volumePercent = 70;
     private string _feedbackText = "设置会自动保存。";
+    private string _petImportFeedback = "可导入单个 Codex V2 宠物目录，或扫描 Codex 默认目录。";
+    private bool _petActionsEnabled = true;
 
     // CodeOrbit 连接状态栏
     private string _runtimeConnectionStatus = "CodeOrbit 连接中...";
@@ -75,10 +78,11 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private string _codeOrbitReconnectFeedback = "修改后点「应用并重连」生效。";
     private bool _apiTokenPasswordBoxInitialized;
 
-    public SettingsWindow(SettingsManager settings, IWpfSourceService? sourceService = null)
+    public SettingsWindow(SettingsManager settings, IWpfSourceService? sourceService = null, WpfPetCatalogService? petCatalog = null)
     {
         InitializeComponent();
         _settings = settings;
+        _petCatalog = petCatalog ?? new WpfPetCatalogService(settings);
         _sourceService = sourceService ?? new UnavailableWpfSourceService();
         _autoApproveSafeTools = _settings.Get("auto_approve_safe_tools", false);
         _autoApproveAllPermissions = _settings.Get(SettingsManager.AutoApproveAllPermissionsKey, false);
@@ -99,11 +103,13 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _volumePercent = Math.Clamp(_settings.Get("volume", 0.7), 0.0, 1.0) * 100.0;
         _selectedWslDistro = _settings.Get("last_wsl_distro", (string?)null);
         LoadCodeOrbitSettingsFromStore();
+        RefreshPets();
         DataContext = this;
         RefreshMonitorOptions();
         RegisterSections();
         ShowSection(_activeSectionId, animate: false);
         Loaded += SettingsWindow_Loaded;
+        _petCatalog.CatalogChanged += OnPetCatalogChanged;
 
         // 加载 CodeOrbit 连接状态
         _ = LoadRuntimeStatusAsync();
@@ -214,6 +220,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<DisplayMonitorOption> DisplayMonitorOptions { get; } = new();
+
+    public ObservableCollection<WpfPetSettingsItem> Pets { get; } = new();
 
     // 工具列表
     public ObservableCollection<SourceViewModel> Sources { get; } = new();
@@ -517,21 +525,56 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         set
         {
             var normalized = WpfHudDensityMode.Normalize(value);
+            if (WpfHudDensityMode.IsPet(normalized) && !HasDefaultPet)
+            {
+                FeedbackText = "请先到宠物栏目导入并选择默认宠物";
+                OnPropertyChanged();
+                return;
+            }
             if (string.Equals(_hudDensityMode, normalized, StringComparison.Ordinal)) return;
             _hudDensityMode = normalized;
             OnPropertyChanged();
-            OnPropertyChanged(nameof(IsOrbHudDensityMode));
+            OnPropertyChanged(nameof(IsFloatingHudDensityMode));
             _settings.Set("hud_density_mode", normalized);
             FeedbackText = normalized switch
             {
                 WpfHudDensityMode.Compact => "HUD 已切换为紧凑",
                 WpfHudDensityMode.Orb => "HUD 已切换为悬浮球",
+                WpfHudDensityMode.Pet => "HUD 已切换为宠物",
                 _ => "HUD 已切换为经典样式"
             };
         }
     }
 
-    public bool IsOrbHudDensityMode => WpfHudDensityMode.IsOrb(_hudDensityMode);
+    public bool IsFloatingHudDensityMode => WpfHudDensityMode.UsesFloatingAnchor(_hudDensityMode);
+
+    public bool HasDefaultPet => _petCatalog.HasDefaultPet;
+
+    public bool HasNoDefaultPet => !HasDefaultPet;
+
+    public string DefaultPetName => _petCatalog.DefaultPet?.DisplayName ?? "尚未选择默认宠物";
+
+    public string PetImportFeedback
+    {
+        get => _petImportFeedback;
+        private set
+        {
+            if (string.Equals(_petImportFeedback, value, StringComparison.Ordinal)) return;
+            _petImportFeedback = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool PetActionsEnabled
+    {
+        get => _petActionsEnabled;
+        private set
+        {
+            if (_petActionsEnabled == value) return;
+            _petActionsEnabled = value;
+            OnPropertyChanged();
+        }
+    }
 
     public string PanelHeightMode
     {
@@ -733,7 +776,141 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _settings.Remove(WpfHudDensityMode.OrbMonitorIdKey);
         // Re-fire density mode so HudWindow clamps to display_position without requiring a mode toggle.
         _settings.Set("hud_density_mode", WpfHudDensityMode.Normalize(_hudDensityMode));
-        FeedbackText = "悬浮球位置已重置为当前显示位置锚点";
+        FeedbackText = "浮动模式位置已重置为当前显示位置锚点";
+    }
+
+    private async void ImportPet_Click(object sender, RoutedEventArgs e)
+    {
+        using var dialog = new System.Windows.Forms.FolderBrowserDialog
+        {
+            Description = "选择包含 pet.json 的 Codex V2 宠物目录",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = false
+        };
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+            return;
+
+        await RunPetActionAsync(() =>
+        {
+            var result = _petCatalog.ImportDirectory(dialog.SelectedPath);
+            return result.Updated
+                ? $"已更新宠物：{result.Pet.DisplayName}"
+                : $"已导入宠物：{result.Pet.DisplayName}";
+        });
+    }
+
+    private async void ImportCodexPets_Click(object sender, RoutedEventArgs e)
+    {
+        await RunPetActionAsync(() =>
+        {
+            var result = _petCatalog.ImportCodexPets();
+            var failure = result.Failures.FirstOrDefault();
+            return failure is null
+                ? $"Codex 宠物导入完成：{result.Summary}"
+                : $"Codex 宠物导入完成：{result.Summary}；首个失败：{System.IO.Path.GetFileName(failure.DirectoryPath)}（{failure.Message}）";
+        });
+    }
+
+    private void SetDefaultPet_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: WpfPetSettingsItem item })
+            return;
+
+        try
+        {
+            _petCatalog.SetDefault(item.Id);
+            PetImportFeedback = $"已将 {item.DisplayName} 设为默认宠物";
+            FeedbackText = PetImportFeedback;
+        }
+        catch (Exception ex)
+        {
+            PetImportFeedback = $"设置默认宠物失败：{ex.Message}";
+            FeedbackText = PetImportFeedback;
+        }
+    }
+
+    private void DeletePet_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: WpfPetSettingsItem item })
+            return;
+        if (System.Windows.MessageBox.Show(
+                $"删除已托管的宠物“{item.DisplayName}”？\n不会删除 Codex 原目录。",
+                "删除宠物",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            _petCatalog.Delete(item.Id);
+            PetImportFeedback = $"已删除宠物：{item.DisplayName}";
+            FeedbackText = PetImportFeedback;
+        }
+        catch (Exception ex)
+        {
+            PetImportFeedback = $"删除宠物失败：{ex.Message}";
+            FeedbackText = PetImportFeedback;
+        }
+    }
+
+    private async Task RunPetActionAsync(Func<string> action)
+    {
+        if (!PetActionsEnabled)
+            return;
+
+        PetActionsEnabled = false;
+        PetImportFeedback = "正在处理宠物资源…";
+        try
+        {
+            var message = await Task.Run(action);
+            PetImportFeedback = message;
+            FeedbackText = message;
+        }
+        catch (Exception ex)
+        {
+            PetImportFeedback = $"宠物导入失败：{ex.Message}";
+            FeedbackText = PetImportFeedback;
+        }
+        finally
+        {
+            PetActionsEnabled = true;
+        }
+    }
+
+    private void OnPetCatalogChanged(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(RefreshPets);
+            return;
+        }
+
+        RefreshPets();
+    }
+
+    private void RefreshPets()
+    {
+        var defaultId = _petCatalog.DefaultPetId;
+        Pets.Clear();
+        foreach (var pet in _petCatalog.Pets)
+        {
+            Pets.Add(new WpfPetSettingsItem(
+                pet.Id,
+                pet.DisplayName,
+                pet.Description,
+                string.Equals(pet.Id, defaultId, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        var configuredMode = WpfHudDensityMode.Normalize(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
+        if (!string.Equals(_hudDensityMode, configuredMode, StringComparison.Ordinal))
+        {
+            _hudDensityMode = configuredMode;
+            OnPropertyChanged(nameof(HudDensityMode));
+            OnPropertyChanged(nameof(IsFloatingHudDensityMode));
+        }
+        OnPropertyChanged(nameof(HasDefaultPet));
+        OnPropertyChanged(nameof(HasNoDefaultPet));
+        OnPropertyChanged(nameof(DefaultPetName));
     }
 
     private void ApplySessionTimeout(string value)
@@ -807,6 +984,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _sections["appearance"] = SectionAppearance;
         _sections["hotkeys"] = SectionHotkeys;
         _sections["tools"] = SectionTools;
+        _sections["pets"] = SectionPets;
         _sections["codeorbit"] = SectionCodeOrbit;
         _sections[AboutSectionId] = SectionAbout;
     }
@@ -1831,6 +2009,14 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             parts.Add("默认");
         return string.Join(" · ", parts);
     }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _petCatalog.CatalogChanged -= OnPetCatalogChanged;
+        base.OnClosed(e);
+    }
+
+    public sealed record WpfPetSettingsItem(string Id, string DisplayName, string Description, bool IsDefault);
 
     public sealed record WslDistroItem(string Name, string Label);
 

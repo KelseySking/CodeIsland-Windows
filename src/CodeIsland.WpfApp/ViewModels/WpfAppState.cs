@@ -242,11 +242,12 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         }
     }
     public string PendingPinButtonText => IsPendingPinned ? "取消钉住" : "钉住";
-    public bool IsSideCollapsed => IsCollapsed && !IsOrbHudMode && WpfHudDisplayPosition.IsSideCenter(_settings.Get("display_position", WpfHudDisplayPosition.Default));
-    public bool IsHorizontalCollapsed => IsCollapsed && !IsSideCollapsed && !IsOrbHudMode;
+    public bool IsSideCollapsed => IsCollapsed && !UsesFloatingAnchor && WpfHudDisplayPosition.IsSideCenter(_settings.Get("display_position", WpfHudDisplayPosition.Default));
+    public bool IsHorizontalCollapsed => IsCollapsed && !IsSideCollapsed && !UsesFloatingAnchor;
     public bool IsCompactHudMode => WpfHudDensityMode.IsCompact(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
     public bool IsOrbHudMode => WpfHudDensityMode.IsOrb(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
-    public bool IsClassicHudMode => !IsCompactHudMode && !IsOrbHudMode;
+    public bool UsesFloatingAnchor => WpfHudDensityMode.UsesFloatingAnchor(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
+    public bool IsClassicHudMode => !IsCompactHudMode && !UsesFloatingAnchor;
     public bool IsClassicHorizontalCollapsed => IsHorizontalCollapsed && IsClassicHudMode;
     public bool IsCompactHorizontalCollapsed => IsHorizontalCollapsed && IsCompactHudMode;
     public bool IsClassicSideCollapsed => IsSideCollapsed && IsClassicHudMode;
@@ -1750,6 +1751,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(IsHorizontalCollapsed));
         OnPropertyChanged(nameof(IsCompactHudMode));
         OnPropertyChanged(nameof(IsOrbHudMode));
+        OnPropertyChanged(nameof(UsesFloatingAnchor));
         OnPropertyChanged(nameof(IsClassicHudMode));
         OnPropertyChanged(nameof(IsClassicHorizontalCollapsed));
         OnPropertyChanged(nameof(IsCompactHorizontalCollapsed));

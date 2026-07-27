@@ -5,6 +5,7 @@ public static class WpfHudDensityMode
     public const string Classic = "classic";
     public const string Compact = "compact";
     public const string Orb = "orb";
+    public const string Pet = "pet";
     public const string Default = Classic;
 
     public const string OrbLeftKey = "orb_left";
@@ -15,6 +16,7 @@ public static class WpfHudDensityMode
     {
         Compact => Compact,
         Orb => Orb,
+        Pet => Pet,
         _ => Classic
     };
 
@@ -24,9 +26,18 @@ public static class WpfHudDensityMode
     public static bool IsOrb(string? value) =>
         string.Equals(Normalize(value), Orb, StringComparison.Ordinal);
 
+    public static bool IsPet(string? value) =>
+        string.Equals(Normalize(value), Pet, StringComparison.Ordinal);
+
+    public static bool UsesFloatingAnchor(string? value)
+    {
+        var mode = Normalize(value);
+        return mode is Orb or Pet;
+    }
+
     public static bool UsesCompactExpandedMetrics(string? value)
     {
         var mode = Normalize(value);
-        return mode is Compact or Orb;
+        return mode is Compact or Orb or Pet;
     }
 }

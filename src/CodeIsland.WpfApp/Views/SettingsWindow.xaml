@@ -121,6 +121,7 @@
             <ListBoxItem Tag="appearance" Content="外观" />
             <ListBoxItem Tag="hotkeys" Content="快捷键" />
             <ListBoxItem Tag="tools" Content="工具连接" />
+            <ListBoxItem Tag="pets" Content="宠物" />
             <ListBoxItem Tag="codeorbit" Content="CodeOrbit" />
             <ListBoxItem Tag="about" Content="关于" />
           </ListBox>
@@ -296,20 +297,27 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                       <TextBlock Text="HUD 样式" Style="{StaticResource SettingsLabelStyle}" />
-                      <TextBlock Text="经典/紧凑为信息条；悬浮球可拖拽，有待办时会提示。" Style="{StaticResource SettingsHelpStyle}" />
+                      <TextBlock Text="经典/紧凑为信息条；悬浮球与宠物可拖拽。" Style="{StaticResource SettingsHelpStyle}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                       <ComboBox SelectedValue="{Binding HudDensityMode, Mode=TwoWay}" SelectedValuePath="Tag" MinHeight="34">
                         <ComboBoxItem Content="经典" Tag="classic" />
                         <ComboBoxItem Content="紧凑" Tag="compact" />
                         <ComboBoxItem Content="悬浮球" Tag="orb" />
+                        <ComboBoxItem Content="宠物" Tag="pet" IsEnabled="{Binding HasDefaultPet}" />
                       </ComboBox>
-                      <Button Content="重置悬浮球位置"
+                      <TextBlock Text="请先到宠物栏目导入并选择默认宠物。"
+                                 Style="{StaticResource SettingsHelpStyle}"
+                                 Foreground="#FFFFB86B"
+                                 Margin="0,6,0,0"
+                                 TextWrapping="Wrap"
+                                 Visibility="{Binding HasNoDefaultPet, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+                      <Button Content="重置浮动模式位置"
                               Margin="0,8,0,0"
                               MinHeight="30"
                               Padding="10,4"
                               HorizontalAlignment="Stretch"
-                              IsEnabled="{Binding IsOrbHudDensityMode}"
+                              IsEnabled="{Binding IsFloatingHudDensityMode}"
                               Click="OnResetOrbPositionClick" />
                     </StackPanel>
                   </Grid>
@@ -575,6 +583,93 @@
                                     Padding="12,7"
                                     VerticalAlignment="Center"
                                     ToolTip="在 WSL 中连接/断开（与 Windows 侧独立）" />
+                          </StackPanel>
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </ScrollViewer>
+
+            <!-- 宠物 -->
+            <ScrollViewer x:Name="SectionPets"
+                          Visibility="Collapsed"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+              <StackPanel>
+                <TextBlock Text="宠物" Style="{StaticResource SettingsSectionTitleStyle}" />
+
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                      <TextBlock Text="导入 Codex V2 宠物" Style="{StaticResource SettingsLabelStyle}" />
+                      <TextBlock Text="{Binding PetImportFeedback}" Style="{StaticResource SettingsHelpStyle}" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding DefaultPetName, StringFormat=当前默认：{0}}"
+                                 FontSize="12"
+                                 Foreground="{StaticResource HudAccentBrush}"
+                                 Margin="0,6,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                      <Button Content="导入宠物"
+                              Click="ImportPet_Click"
+                              IsEnabled="{Binding PetActionsEnabled}"
+                              Padding="14,7"
+                              Margin="0,0,8,0" />
+                      <Button Content="一键导入 Codex 宠物"
+                              Click="ImportCodexPets_Click"
+                              IsEnabled="{Binding PetActionsEnabled}"
+                              Padding="14,7" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsCardStyle}"
+                        Visibility="{Binding HasNoDefaultPet, Converter={x:Static views:BoolVisibilityConverter.Instance}}">
+                  <TextBlock Text="尚未导入有效宠物。导入成功后即可在“外观”中选择宠物模式。"
+                             Style="{StaticResource SettingsHelpStyle}"
+                             TextWrapping="Wrap" />
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding Pets}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Style="{StaticResource SettingsCardStyle}">
+                        <Grid>
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
+                          <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="{Binding DisplayName}" Style="{StaticResource SettingsLabelStyle}" />
+                              <TextBlock Text="默认"
+                                         Margin="8,0,0,0"
+                                         Padding="6,1"
+                                         FontSize="11"
+                                         Foreground="#FF08110E"
+                                         Background="{StaticResource HudAccentBrush}"
+                                         Visibility="{Binding IsDefault, Converter={x:Static views:BoolVisibilityConverter.Instance}}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Description}" Style="{StaticResource SettingsHelpStyle}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Id, StringFormat=ID：{0}}" FontSize="11" Foreground="#66FFFFFF" Margin="0,4,0,0" />
+                          </StackPanel>
+                          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                            <Button Content="设为默认"
+                                    Tag="{Binding}"
+                                    Click="SetDefaultPet_Click"
+                                    Visibility="{Binding IsDefault, Converter={x:Static views:InverseBoolVisibilityConverter.Instance}}"
+                                    Padding="12,6"
+                                    Margin="0,0,8,0" />
+                            <Button Content="删除"
+                                    Tag="{Binding}"
+                                    Click="DeletePet_Click"
+                                    Padding="12,6"
+                                    Foreground="#FFFFB4AF" />
                           </StackPanel>
                         </Grid>
                       </Border>

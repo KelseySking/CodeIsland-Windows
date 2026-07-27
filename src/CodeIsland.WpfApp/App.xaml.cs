@@ -13,6 +13,7 @@ public partial class App : System.Windows.Application
 
     private Mutex? _singleInstanceMutex;
     private SettingsManager? _settings;
+    private WpfPetCatalogService? _petCatalog;
     private EventLogger? _logger;
     private WpfRuntimeProcessManager? _runtimeManager;
     private IWpfRuntimeClient? _runtimeClient;
@@ -45,6 +46,7 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
 
         _settings = new SettingsManager();
+        _petCatalog = new WpfPetCatalogService(_settings);
         _logger = new EventLogger();
         _runtimeManager = new WpfRuntimeProcessManager(_settings, _logger);
         var runtimeClient = new WpfRuntimeApiClient(_runtimeManager.ApiBaseUrl, _runtimeManager.ApiToken, _logger);
@@ -59,7 +61,7 @@ public partial class App : System.Windows.Application
             Volume = (float)_settings.Get("volume", 0.7)
         };
         _settings.SettingChanged += OnRuntimeSettingChanged;
-        _hudWindow = new HudWindow(_appState, _settings);
+        _hudWindow = new HudWindow(_appState, _settings, _petCatalog);
         _hudWindow.ShowNoActivate();
         _ = StartRuntimeAsync(_logger);
 
@@ -315,7 +317,7 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        var window = new SettingsWindow(_settings, _sourceService);
+        var window = new SettingsWindow(_settings, _sourceService, _petCatalog);
         _settingsWindow = window;
         window.Closed += (_, _) =>
         {
