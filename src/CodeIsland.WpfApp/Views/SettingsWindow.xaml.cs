@@ -47,7 +47,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private bool _showFullRecentMessages;
     private double _volumePercent = 70;
     private string _feedbackText = "设置会自动保存。";
-    private string _petImportFeedback = "可导入单个 Codex V2 宠物目录，或扫描 Codex 默认目录。";
+    private string _petImportFeedback = "可选择或拖入一个 Codex V1 / V2 宠物目录、ZIP / .codex-pet 压缩包。";
     private bool _petActionsEnabled = true;
 
     // CodeOrbit 连接状态栏
@@ -801,20 +801,29 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     {
         using var dialog = new System.Windows.Forms.FolderBrowserDialog
         {
-            Description = "选择包含 pet.json 的 Codex V2 宠物目录",
+            Description = "选择包含 pet.json 的 Codex V1 / V2 宠物目录",
             UseDescriptionForTitle = true,
             ShowNewFolderButton = false
         };
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             return;
 
-        await RunPetActionAsync(() =>
+        await ImportPetPathAsync(dialog.SelectedPath);
+    }
+
+    private async void ImportPetArchive_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            var result = _petCatalog.ImportDirectory(dialog.SelectedPath);
-            return result.Updated
-                ? $"已更新宠物：{result.Pet.DisplayName}"
-                : $"已导入宠物：{result.Pet.DisplayName}";
-        });
+            Title = "选择 Codex 宠物压缩包",
+            Filter = "宠物压缩包 (*.zip;*.codex-pet)|*.zip;*.codex-pet",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        await ImportPetPathAsync(dialog.FileName);
     }
 
     private async void ImportCodexPets_Click(object sender, RoutedEventArgs e)
@@ -893,6 +902,70 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         {
             PetActionsEnabled = true;
         }
+    }
+
+    private Task ImportPetPathAsync(string path) => RunPetActionAsync(() =>
+    {
+        var result = _petCatalog.ImportPath(path);
+        return result.Updated
+            ? $"已更新宠物：{result.Pet.DisplayName}"
+            : $"已导入宠物：{result.Pet.DisplayName}";
+    });
+
+    private void PetSection_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        e.Handled = true;
+        e.Effects = PetActionsEnabled &&
+                    (e.AllowedEffects & System.Windows.DragDropEffects.Copy) != 0 &&
+                    TryGetDroppedPetPath(e.Data, out _, out _)
+            ? System.Windows.DragDropEffects.Copy
+            : System.Windows.DragDropEffects.None;
+    }
+
+    private async void PetSection_PreviewDrop(object sender, System.Windows.DragEventArgs e)
+    {
+        e.Handled = true;
+        if (!PetActionsEnabled)
+        {
+            PetImportFeedback = "正在处理另一个宠物资源，请稍候";
+            FeedbackText = PetImportFeedback;
+            return;
+        }
+
+        if (!TryGetDroppedPetPath(e.Data, out var path, out var error))
+        {
+            PetImportFeedback = error;
+            FeedbackText = error;
+            return;
+        }
+
+        await ImportPetPathAsync(path);
+    }
+
+    private static bool TryGetDroppedPetPath(System.Windows.IDataObject data, out string path, out string error)
+    {
+        path = "";
+        if (!data.GetDataPresent(System.Windows.DataFormats.FileDrop) || data.GetData(System.Windows.DataFormats.FileDrop) is not string[] paths || paths.Length == 0)
+        {
+            error = "请拖入一个宠物目录或 ZIP / .codex-pet 压缩包";
+            return false;
+        }
+
+        if (paths.Length != 1)
+        {
+            error = "每次只能拖入一个宠物目录或压缩包";
+            return false;
+        }
+
+        path = paths[0];
+        if (System.IO.Directory.Exists(path) || System.IO.File.Exists(path) && WpfPetCatalogService.IsSupportedArchiveFileName(path))
+        {
+            error = "";
+            return true;
+        }
+
+        error = "仅支持现有宠物目录、.zip 或 ZIP 格式的 .codex-pet 文件";
+        return false;
     }
 
     private void OnPetCatalogChanged(object? sender, EventArgs e)

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -31,8 +32,13 @@ public sealed class WpfPetCatalogService
     public const string DefaultPetIdKey = "default_pet_id";
     private const long MaxManifestBytes = 128 * 1024;
     private const long MaxSpritesheetBytes = 64 * 1024 * 1024;
+    private const long MaxArchiveBytes = 80 * 1024 * 1024;
+    private const long MaxArchiveUncompressedBytes = 96 * 1024 * 1024;
+    private const int MaxArchiveEntries = 64;
     private const int AtlasWidth = 1536;
-    private const int AtlasHeight = 2288;
+    private const int AtlasV1Height = 1872;
+    private const int AtlasV2Height = 2288;
+    private const string ImportPrefix = ".import-";
     private const string StagingPrefix = ".staging-";
     private const string BackupPrefix = ".backup-";
     private static readonly Regex SafeIdPattern = new("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", RegexOptions.CultureInvariant);
@@ -82,6 +88,47 @@ public sealed class WpfPetCatalogService
         var result = ImportCore(sourceDirectory);
         RefreshAndNotify();
         return result;
+    }
+
+    public WpfPetImportResult ImportArchive(string archivePath)
+    {
+        if (string.IsNullOrWhiteSpace(archivePath) || !File.Exists(archivePath))
+            throw new InvalidDataException("宠物压缩包不存在");
+        if (!IsSupportedArchiveFileName(archivePath))
+            throw new InvalidDataException("宠物压缩包只支持 .zip 或 .codex-pet 文件");
+
+        RejectReparsePoint(archivePath);
+        EnsurePetsRootAvailable();
+        var extractionRoot = Path.Combine(PetsRoot, ImportPrefix + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var packageDirectory = ExtractArchive(archivePath, extractionRoot);
+            var result = ImportCore(packageDirectory);
+            RefreshAndNotify();
+            return result;
+        }
+        finally
+        {
+            TryDeleteDirectory(extractionRoot);
+        }
+    }
+
+    public WpfPetImportResult ImportPath(string path)
+    {
+        if (Directory.Exists(path))
+            return ImportDirectory(path);
+        if (File.Exists(path))
+            return ImportArchive(path);
+        throw new InvalidDataException("宠物目录或压缩包不存在");
+    }
+
+    public static bool IsSupportedArchiveFileName(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".zip", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".codex-pet", StringComparison.OrdinalIgnoreCase);
     }
 
     public WpfPetBatchImportResult ImportCodexPets()
@@ -207,6 +254,9 @@ public sealed class WpfPetCatalogService
 
     private void RecoverInterruptedUpdates()
     {
+        foreach (var import in TryEnumeratePetDirectories(ImportPrefix + "*"))
+            TryDeleteDirectory(import);
+
         foreach (var staging in TryEnumeratePetDirectories(StagingPrefix + "*"))
             TryDeleteDirectory(staging);
 
@@ -334,8 +384,7 @@ public sealed class WpfPetCatalogService
             throw new InvalidDataException("pet.json 的 id 与托管目录不一致");
         var displayName = RequireText(manifest.DisplayName, "displayName", 120);
         var description = RequireText(manifest.Description, "description", 500);
-        if (manifest.SpriteVersionNumber != 2)
-            throw new InvalidDataException("仅支持 spriteVersionNumber 为 2 的宠物");
+        var spriteVersion = ResolveSpriteVersion(manifest.SpriteVersionNumber);
 
         var relativePath = RequireText(manifest.SpritesheetPath, "spritesheetPath", 260);
         var spritesheetPath = ResolveSafeRelativePath(root, relativePath);
@@ -345,7 +394,7 @@ public sealed class WpfPetCatalogService
             throw new InvalidDataException("精灵图只支持 PNG 或 WebP");
         ValidateFileSize(spritesheetPath, MaxSpritesheetBytes, "精灵图");
         RejectReparsePath(root, spritesheetPath);
-        ValidateAtlas(spritesheetPath);
+        ValidateAtlas(spritesheetPath, spriteVersion);
 
         return new ValidatedPackage(
             root,
@@ -353,8 +402,17 @@ public sealed class WpfPetCatalogService
             new WpfPetCatalogItem(id, displayName, description, root, spritesheetPath));
     }
 
-    private static void ValidateAtlas(string path)
+    private static int ResolveSpriteVersion(int? version)
     {
+        var resolved = version ?? 1;
+        if (resolved is not (1 or 2))
+            throw new InvalidDataException("spriteVersionNumber 仅支持 1 或 2");
+        return resolved;
+    }
+
+    private static void ValidateAtlas(string path, int spriteVersion)
+    {
+        var expectedHeight = spriteVersion == 1 ? AtlasV1Height : AtlasV2Height;
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -363,8 +421,8 @@ public sealed class WpfPetCatalogService
                 throw new InvalidDataException("精灵图内容与 PNG/WebP 扩展名不匹配");
             stream.Position = 0;
             var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-            if (decoder.Frames.Count == 0 || decoder.Frames[0].PixelWidth != AtlasWidth || decoder.Frames[0].PixelHeight != AtlasHeight)
-                throw new InvalidDataException($"精灵图尺寸必须为 {AtlasWidth}×{AtlasHeight}");
+            if (decoder.Frames.Count == 0 || decoder.Frames[0].PixelWidth != AtlasWidth || decoder.Frames[0].PixelHeight != expectedHeight)
+                throw new InvalidDataException($"V{spriteVersion} 精灵图尺寸必须为 {AtlasWidth}×{expectedHeight}");
         }
         catch (InvalidDataException)
         {
@@ -382,6 +440,164 @@ public sealed class WpfPetCatalogService
             return signature[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
 
         return signature[..4].SequenceEqual("RIFF"u8) && signature[8..12].SequenceEqual("WEBP"u8);
+    }
+
+    private static string ExtractArchive(string archivePath, string extractionRoot)
+    {
+        using var stream = new FileStream(archivePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (stream.Length <= 0 || stream.Length > MaxArchiveBytes)
+            throw new InvalidDataException("宠物压缩包大小无效");
+        Span<byte> signature = stackalloc byte[4];
+        if (stream.Read(signature) != signature.Length || !signature.SequenceEqual(new byte[] { 0x50, 0x4B, 0x03, 0x04 }))
+            throw new InvalidDataException("压缩包不是有效的 ZIP 文件");
+        stream.Position = 0;
+        ZipArchive archive;
+        try
+        {
+            archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new InvalidDataException("压缩包不是有效的 ZIP 文件", ex);
+        }
+
+        using (archive)
+        {
+            var plan = BuildArchivePlan(archive, extractionRoot);
+            Directory.CreateDirectory(extractionRoot);
+            long extractedBytes = 0;
+            try
+            {
+                foreach (var item in plan.Entries)
+                {
+                    if (item.IsDirectory)
+                    {
+                        Directory.CreateDirectory(item.TargetPath);
+                        continue;
+                    }
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(item.TargetPath)!);
+                    using var source = item.Entry.Open();
+                    using var target = new FileStream(item.TargetPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                    CopyArchiveEntry(source, target, ref extractedBytes);
+                    if (target.Length != item.Entry.Length)
+                        throw new InvalidDataException("压缩包条目解压长度与声明不一致");
+                }
+            }
+            catch (InvalidDataException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                throw new InvalidDataException($"无法解压宠物压缩包：{ex.Message}", ex);
+            }
+
+            return string.IsNullOrEmpty(plan.PackageRelativeRoot)
+                ? extractionRoot
+                : Path.Combine(extractionRoot, plan.PackageRelativeRoot);
+        }
+    }
+
+    private static ArchivePlan BuildArchivePlan(ZipArchive archive, string extractionRoot)
+    {
+        if (archive.Entries.Count == 0)
+            throw new InvalidDataException("宠物压缩包为空");
+        if (archive.Entries.Count > MaxArchiveEntries)
+            throw new InvalidDataException($"宠物压缩包条目不能超过 {MaxArchiveEntries} 个");
+
+        var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var entries = new List<ArchiveEntryPlan>(archive.Entries.Count);
+        var relativePaths = new List<string>(archive.Entries.Count);
+        var manifestEntries = new List<string>();
+        long declaredBytes = 0;
+        foreach (var entry in archive.Entries)
+        {
+            if (IsArchiveLink(entry))
+                throw new InvalidDataException("宠物压缩包不能包含符号链接或重解析点");
+
+            var relativePath = entry.FullName.Replace('\\', '/');
+            var isDirectory = relativePath.EndsWith("/", StringComparison.Ordinal);
+            relativePath = relativePath.TrimEnd('/');
+            if (relativePath.Length == 0)
+                throw new InvalidDataException("宠物压缩包包含无效路径");
+
+            var targetPath = ResolveSafeRelativePath(extractionRoot, relativePath);
+            if (!targets.Add(Path.TrimEndingDirectorySeparator(targetPath)))
+                throw new InvalidDataException("宠物压缩包包含重复路径");
+
+            if (isDirectory)
+            {
+                if (entry.Length != 0)
+                    throw new InvalidDataException("宠物压缩包目录条目无效");
+            }
+            else
+            {
+                if (entry.Length > MaxArchiveUncompressedBytes - declaredBytes)
+                    throw new InvalidDataException("宠物压缩包解压后总大小超过 96 MiB");
+                declaredBytes += entry.Length;
+                if (Path.GetFileName(relativePath).Equals("pet.json", StringComparison.OrdinalIgnoreCase))
+                    manifestEntries.Add(relativePath);
+            }
+
+            entries.Add(new ArchiveEntryPlan(entry, targetPath, isDirectory));
+            relativePaths.Add(relativePath);
+        }
+
+        foreach (var file in entries.Where(static item => !item.IsDirectory))
+        {
+            var prefix = Path.TrimEndingDirectorySeparator(file.TargetPath) + Path.DirectorySeparatorChar;
+            if (entries.Any(item => !ReferenceEquals(item, file) && item.TargetPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException("宠物压缩包中的文件路径与目录冲突");
+        }
+
+        return new ArchivePlan(entries, ResolveArchivePackageRelativeRoot(manifestEntries, relativePaths));
+    }
+
+    private static string ResolveArchivePackageRelativeRoot(
+        IReadOnlyList<string> manifestEntries,
+        IReadOnlyList<string> archivePaths)
+    {
+        if (manifestEntries.Count != 1)
+            throw new InvalidDataException(manifestEntries.Count == 0
+                ? "宠物压缩包中未找到 pet.json"
+                : "宠物压缩包只能包含一个 pet.json");
+
+        var segments = manifestEntries[0].Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length is < 1 or > 2 || !segments[^1].Equals("pet.json", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("pet.json 只能位于压缩包根目录或唯一顶层目录内");
+        if (segments.Length == 1)
+            return "";
+
+        var wrapper = segments[0];
+        var wrapperPrefix = wrapper + "/";
+        if (archivePaths.Any(path =>
+                !path.Equals(wrapper, StringComparison.OrdinalIgnoreCase) &&
+                !path.StartsWith(wrapperPrefix, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException("宠物压缩包只能包含一个顶层目录");
+        return wrapper;
+    }
+
+    private static bool IsArchiveLink(ZipArchiveEntry entry)
+    {
+        const int UnixFileTypeMask = 0xF000;
+        const int UnixSymbolicLink = 0xA000;
+        var attributes = entry.ExternalAttributes;
+        return ((attributes >> 16) & UnixFileTypeMask) == UnixSymbolicLink ||
+               (((FileAttributes)attributes) & FileAttributes.ReparsePoint) != 0;
+    }
+
+    private static void CopyArchiveEntry(Stream source, Stream target, ref long extractedBytes)
+    {
+        var buffer = new byte[81920];
+        int read;
+        while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            if (read > MaxArchiveUncompressedBytes - extractedBytes)
+                throw new InvalidDataException("宠物压缩包实际解压大小超过 96 MiB");
+            target.Write(buffer, 0, read);
+            extractedBytes += read;
+        }
     }
 
     private static string ResolveSafeRelativePath(string root, string relativePath)
@@ -456,7 +672,10 @@ public sealed class WpfPetCatalogService
         try
         {
             if (Directory.Exists(path))
+            {
+                RejectReparsePoint(path);
                 Directory.Delete(path, recursive: true);
+            }
         }
         catch
         {
@@ -475,6 +694,16 @@ public sealed class WpfPetCatalogService
         Debug.Assert(HasExpectedImageSignature("pet.png", new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0 }));
         Debug.Assert(HasExpectedImageSignature("pet.webp", new byte[] { 0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50 }));
         Debug.Assert(!HasExpectedImageSignature("pet.png", new byte[] { 0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50 }));
+        Debug.Assert(ResolveSpriteVersion(null) == 1);
+        Debug.Assert(ResolveSpriteVersion(1) == 1);
+        Debug.Assert(ResolveSpriteVersion(2) == 2);
+        Debug.Assert(IsSupportedArchiveFileName("pet.zip"));
+        Debug.Assert(IsSupportedArchiveFileName("pet.CODEX-PET"));
+        Debug.Assert(!IsSupportedArchiveFileName("pet.rar"));
+        Debug.Assert(ResolveArchivePackageRelativeRoot(["pet.json"], ["pet.json", "spritesheet.png"]) == "");
+        Debug.Assert(ResolveArchivePackageRelativeRoot(["pet/pet.json"], ["pet/pet.json", "pet/spritesheet.png"]) == "pet");
+        var duplicateTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "pet/pet.json" };
+        Debug.Assert(!duplicateTargets.Add("PET/PET.JSON"));
         var extendedManifest = JsonSerializer.Deserialize<WpfPetManifest>(
             """{"id":"pet","displayName":"Pet","description":"Pet","spriteVersionNumber":2,"spritesheetPath":"pet.png","author":"Codex"}""",
             ManifestJsonOptions);
@@ -495,9 +724,39 @@ public sealed class WpfPetCatalogService
         catch (InvalidDataException)
         {
         }
+        try
+        {
+            ResolveSpriteVersion(0);
+            Debug.Fail("Unsupported sprite versions must be rejected.");
+        }
+        catch (InvalidDataException)
+        {
+        }
+        try
+        {
+            ResolveArchivePackageRelativeRoot(["wrapper/nested/pet.json"], ["wrapper/nested/pet.json"]);
+            Debug.Fail("Deep archive manifests must be rejected.");
+        }
+        catch (InvalidDataException)
+        {
+        }
+        try
+        {
+            ResolveArchivePackageRelativeRoot(
+                ["wrapper/pet.json"],
+                ["wrapper/pet.json", "wrapper/spritesheet.png", "outside.txt"]);
+            Debug.Fail("Wrapper archives must not contain entries outside the wrapper.");
+        }
+        catch (InvalidDataException)
+        {
+        }
     }
 
     private sealed record ValidatedPackage(string RootPath, string ManifestPath, WpfPetCatalogItem Item);
+
+    private sealed record ArchiveEntryPlan(ZipArchiveEntry Entry, string TargetPath, bool IsDirectory);
+
+    private sealed record ArchivePlan(IReadOnlyList<ArchiveEntryPlan> Entries, string PackageRelativeRoot);
 
     private sealed class WpfPetManifest
     {
@@ -511,7 +770,7 @@ public sealed class WpfPetCatalogService
         public string? Description { get; init; }
 
         [JsonPropertyName("spriteVersionNumber")]
-        public int SpriteVersionNumber { get; init; }
+        public int? SpriteVersionNumber { get; init; }
 
         [JsonPropertyName("spritesheetPath")]
         public string? SpritesheetPath { get; init; }

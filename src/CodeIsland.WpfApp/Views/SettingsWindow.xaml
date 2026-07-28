@@ -596,6 +596,9 @@
             <!-- 宠物 -->
             <ScrollViewer x:Name="SectionPets"
                           Visibility="Collapsed"
+                          AllowDrop="True"
+                          PreviewDragOver="PetSection_PreviewDragOver"
+                          PreviewDrop="PetSection_PreviewDrop"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled">
               <StackPanel>
@@ -608,7 +611,7 @@
                       <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                      <TextBlock Text="导入 Codex V2 宠物" Style="{StaticResource SettingsLabelStyle}" />
+                      <TextBlock Text="导入 Codex V1 / V2 宠物" Style="{StaticResource SettingsLabelStyle}" />
                       <TextBlock Text="{Binding PetImportFeedback}" Style="{StaticResource SettingsHelpStyle}" TextWrapping="Wrap" />
                       <TextBlock Text="{Binding DefaultPetName, StringFormat=当前默认：{0}}"
                                  FontSize="12"
@@ -616,12 +619,17 @@
                                  Margin="0,6,0,0" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
-                      <Button Content="导入宠物"
+                      <Button Content="选择目录"
                               Click="ImportPet_Click"
                               IsEnabled="{Binding PetActionsEnabled}"
                               Padding="14,7"
                               Margin="0,0,8,0" />
-                      <Button Content="一键导入 Codex 宠物"
+                      <Button Content="选择压缩包"
+                              Click="ImportPetArchive_Click"
+                              IsEnabled="{Binding PetActionsEnabled}"
+                              Padding="14,7"
+                              Margin="0,0,8,0" />
+                      <Button Content="扫描 Codex"
                               Click="ImportCodexPets_Click"
                               IsEnabled="{Binding PetActionsEnabled}"
                               Padding="14,7" />
