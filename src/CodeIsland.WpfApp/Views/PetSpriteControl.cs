@@ -4,9 +4,9 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using CodeIsland.WpfApp.Models;
+using CodeIsland.WpfApp.Services;
 
 namespace CodeIsland.WpfApp.Views;
 
@@ -185,21 +185,16 @@ public sealed class PetSpriteControl : Border
 
         try
         {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-            if (decoder.Frames.Count == 0 || decoder.Frames[0].PixelWidth != AtlasWidth)
+            var decoded = WpfPetAtlasDecoder.Decode(path);
+            if (decoded.Bitmap.PixelWidth != AtlasWidth)
                 return;
-            var atlasRows = ResolveAtlasRows(decoder.Frames[0].PixelHeight);
+            var atlasRows = ResolveAtlasRows(decoded.Bitmap.PixelHeight);
             if (atlasRows == 0)
                 return;
 
-            var converted = new FormatConvertedBitmap(decoder.Frames[0], PixelFormats.Bgra32, null, 0);
-            converted.Freeze();
-            var stride = AtlasWidth * 4;
-            _bgraPixels = new byte[stride * converted.PixelHeight];
-            converted.CopyPixels(_bgraPixels, stride, 0);
+            _bgraPixels = decoded.BgraPixels;
             _atlasRows = atlasRows;
-            _atlasBrush = new ImageBrush(converted)
+            _atlasBrush = new ImageBrush(decoded.Bitmap)
             {
                 ViewboxUnits = BrushMappingMode.RelativeToBoundingBox,
                 Stretch = Stretch.Fill,

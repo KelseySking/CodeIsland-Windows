@@ -4,7 +4,6 @@ using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using System.Windows.Media.Imaging;
 
 namespace CodeIsland.WpfApp.Services;
 
@@ -413,25 +412,14 @@ public sealed class WpfPetCatalogService
     private static void ValidateAtlas(string path, int spriteVersion)
     {
         var expectedHeight = spriteVersion == 1 ? AtlasV1Height : AtlasV2Height;
-        try
-        {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            Span<byte> signature = stackalloc byte[12];
-            if (stream.Read(signature) != signature.Length || !HasExpectedImageSignature(path, signature))
-                throw new InvalidDataException("精灵图内容与 PNG/WebP 扩展名不匹配");
-            stream.Position = 0;
-            var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-            if (decoder.Frames.Count == 0 || decoder.Frames[0].PixelWidth != AtlasWidth || decoder.Frames[0].PixelHeight != expectedHeight)
-                throw new InvalidDataException($"V{spriteVersion} 精灵图尺寸必须为 {AtlasWidth}×{expectedHeight}");
-        }
-        catch (InvalidDataException)
-        {
-            throw;
-        }
-        catch (Exception ex) when (ex is IOException or NotSupportedException or FileFormatException)
-        {
-            throw new InvalidDataException($"无法解码精灵图：{ex.Message}", ex);
-        }
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        Span<byte> signature = stackalloc byte[12];
+        if (stream.Read(signature) != signature.Length || !HasExpectedImageSignature(path, signature))
+            throw new InvalidDataException("精灵图内容与 PNG/WebP 扩展名不匹配");
+
+        var atlas = WpfPetAtlasDecoder.Decode(path);
+        if (atlas.Bitmap.PixelWidth != AtlasWidth || atlas.Bitmap.PixelHeight != expectedHeight)
+            throw new InvalidDataException($"V{spriteVersion} 精灵图尺寸必须为 {AtlasWidth}×{expectedHeight}");
     }
 
     private static bool HasExpectedImageSignature(string path, ReadOnlySpan<byte> signature)
