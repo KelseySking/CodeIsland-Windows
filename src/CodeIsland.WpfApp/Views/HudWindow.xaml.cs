@@ -32,8 +32,6 @@ public partial class HudWindow : Window
     private const double CompactCollapsedSideHeight = 114d;
     private const double CompactHudContentWidth = 480d;
     private const double OrbCollapsedSize = 48d;
-    private const double PetCollapsedWidth = PetSpriteControl.FrameWidth;
-    private const double PetCollapsedHeight = PetSpriteControl.FrameHeight;
     private const double OrbShellPadding = 0d;
     private const double OrbCornerRadius = 12d;
     private const double OrbDragThreshold = 5d;
@@ -221,10 +219,13 @@ public partial class HudWindow : Window
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
     {
         if (e.Key is "display_position" or "display_monitor" or "hud_density_mode"
+            or WpfHudDensityMode.PetScalePercentKey
             or WpfHudDensityMode.OrbLeftKey or WpfHudDensityMode.OrbTopKey or WpfHudDensityMode.OrbMonitorIdKey)
         {
             Dispatcher.Invoke(() =>
             {
+                if (e.Key == WpfHudDensityMode.PetScalePercentKey && SurfaceHost.Content is FloatingPetView pet)
+                    pet.ApplyScale(GetPetScale());
                 UpdateCollapsedBarOrientation();
                 QueueRender();
             });
@@ -777,7 +778,7 @@ public partial class HudWindow : Window
         if (type == typeof(FloatingOrbView))
             return new FloatingOrbView();
         if (type == typeof(FloatingPetView))
-            return new FloatingPetView(_petCatalog);
+            return new FloatingPetView(_petCatalog, GetPetScale());
 
         return Activator.CreateInstance(type)!;
     }
@@ -1383,10 +1384,10 @@ public partial class HudWindow : Window
     }
 
     private double GetCollapsedHorizontalWidth() =>
-        IsPetHudMode() ? PetCollapsedWidth : IsOrbHudMode() ? OrbCollapsedSize : IsCompactHudMode() ? CompactCollapsedHorizontalWidth : CollapsedHorizontalWidth;
+        IsPetHudMode() ? PetSpriteControl.FrameWidth * GetPetScale() : IsOrbHudMode() ? OrbCollapsedSize : IsCompactHudMode() ? CompactCollapsedHorizontalWidth : CollapsedHorizontalWidth;
 
     private double GetCollapsedHorizontalHeight() =>
-        IsPetHudMode() ? PetCollapsedHeight : IsOrbHudMode() ? OrbCollapsedSize : IsCompactHudMode() ? CompactCollapsedHorizontalHeight : CollapsedHorizontalHeight;
+        IsPetHudMode() ? PetSpriteControl.FrameHeight * GetPetScale() : IsOrbHudMode() ? OrbCollapsedSize : IsCompactHudMode() ? CompactCollapsedHorizontalHeight : CollapsedHorizontalHeight;
 
     private double GetCollapsedSideWidth() => IsCompactHudMode() ? CompactCollapsedSideWidth : CollapsedSideWidth;
 
@@ -1396,6 +1397,10 @@ public partial class HudWindow : Window
 
     private string GetCurrentHudDensityMode() =>
         WpfHudDensityMode.Normalize(_settings.Get("hud_density_mode", WpfHudDensityMode.Default));
+
+    private double GetPetScale() =>
+        WpfHudDensityMode.NormalizePetScalePercent(
+            _settings.Get(WpfHudDensityMode.PetScalePercentKey, WpfHudDensityMode.PetScalePercentDefault)) / 100d;
 
     private bool IsCompactHudMode() => WpfHudDensityMode.IsCompact(GetCurrentHudDensityMode());
 
@@ -2055,9 +2060,14 @@ public partial class HudWindow : Window
         if (cursor.X < rect.Left || cursor.X >= rect.Right || cursor.Y < rect.Top || cursor.Y >= rect.Bottom)
             return false;
 
+        var petWidth = pet.ActualWidth;
+        var petHeight = pet.ActualHeight;
+        if (petWidth <= 0d || petHeight <= 0d)
+            return false;
+
         var local = new System.Windows.Point(
-            (cursor.X - rect.Left) * PetCollapsedWidth / (rect.Right - rect.Left),
-            (cursor.Y - rect.Top) * PetCollapsedHeight / (rect.Bottom - rect.Top));
+            (cursor.X - rect.Left) * petWidth / (rect.Right - rect.Left),
+            (cursor.Y - rect.Top) * petHeight / (rect.Bottom - rect.Top));
         return pet.IsVisiblePixelAt(local);
     }
 

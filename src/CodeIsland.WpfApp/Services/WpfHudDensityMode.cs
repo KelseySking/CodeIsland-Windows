@@ -12,6 +12,12 @@ public static class WpfHudDensityMode
     public const string OrbTopKey = "orb_top";
     public const string OrbMonitorIdKey = "orb_monitor_id";
 
+    public const string PetScalePercentKey = "pet_scale_percent";
+    public const double PetScalePercentMinimum = 50d;
+    public const double PetScalePercentDefault = 100d;
+    public const double PetScalePercentMaximum = 200d;
+    public const double PetScalePercentStep = 10d;
+
     public static string Normalize(string? value) => value switch
     {
         Compact => Compact,
@@ -39,5 +45,14 @@ public static class WpfHudDensityMode
     {
         var mode = Normalize(value);
         return mode is Compact or Orb or Pet;
+    }
+
+    public static double NormalizePetScalePercent(double value)
+    {
+        if (!double.IsFinite(value))
+            return PetScalePercentDefault;
+
+        var snapped = Math.Round(value / PetScalePercentStep, MidpointRounding.AwayFromZero) * PetScalePercentStep;
+        return Math.Clamp(snapped, PetScalePercentMinimum, PetScalePercentMaximum);
     }
 }

@@ -481,6 +481,10 @@ public sealed class WpfPetCatalogService
         Debug.Assert(extendedManifest?.Id == "pet");
         Debug.Assert(WpfHudDensityMode.Normalize("pet") == WpfHudDensityMode.Pet);
         Debug.Assert(WpfHudDensityMode.UsesFloatingAnchor("pet"));
+        Debug.Assert(WpfHudDensityMode.NormalizePetScalePercent(40d) == WpfHudDensityMode.PetScalePercentMinimum);
+        Debug.Assert(WpfHudDensityMode.NormalizePetScalePercent(155d) == 160d);
+        Debug.Assert(WpfHudDensityMode.NormalizePetScalePercent(210d) == WpfHudDensityMode.PetScalePercentMaximum);
+        Debug.Assert(WpfHudDensityMode.NormalizePetScalePercent(double.NaN) == WpfHudDensityMode.PetScalePercentDefault);
         var root = Path.Combine(Path.GetTempPath(), "pet-root");
         Debug.Assert(ResolveSafeRelativePath(root, "images/pet.png").StartsWith(root, StringComparison.OrdinalIgnoreCase));
         try

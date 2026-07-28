@@ -35,6 +35,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private string _displayPosition = WpfHudDisplayPosition.Default;
     private string _displayMonitor = WpfMonitorService.AutoMonitorId;
     private string _hudDensityMode = WpfHudDensityMode.Default;
+    private double _petScalePercent = WpfHudDensityMode.PetScalePercentDefault;
     private string _panelHeightMode = "auto";
     private string _webhookUrl = "";
     private string _sessionTimeoutSeconds = "300";
@@ -91,6 +92,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _displayPosition = ReadDisplayPosition();
         _displayMonitor = _settings.Get("display_monitor", WpfMonitorService.AutoMonitorId);
         _hudDensityMode = ReadHudDensityMode();
+        _petScalePercent = WpfHudDensityMode.NormalizePetScalePercent(
+            _settings.Get(WpfHudDensityMode.PetScalePercentKey, WpfHudDensityMode.PetScalePercentDefault));
         _panelHeightMode = _settings.Get("panel_height_mode", "auto");
         _webhookUrl = _settings.Get("webhook_url", "");
         _sessionTimeoutSeconds = _settings.Get("session_timeout", 300).ToString(CultureInfo.InvariantCulture);
@@ -547,6 +550,21 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     }
 
     public bool IsFloatingHudDensityMode => WpfHudDensityMode.UsesFloatingAnchor(_hudDensityMode);
+
+    public double PetScalePercent
+    {
+        get => _petScalePercent;
+        set
+        {
+            var normalized = WpfHudDensityMode.NormalizePetScalePercent(value);
+            if (Math.Abs(_petScalePercent - normalized) < double.Epsilon)
+                return;
+            _petScalePercent = normalized;
+            OnPropertyChanged();
+            _settings.Set(WpfHudDensityMode.PetScalePercentKey, normalized);
+            FeedbackText = $"宠物大小已调整为 {normalized:0}%";
+        }
+    }
 
     public bool HasDefaultPet => _petCatalog.HasDefaultPet;
 

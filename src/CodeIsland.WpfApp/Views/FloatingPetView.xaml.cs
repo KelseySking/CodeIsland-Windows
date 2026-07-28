@@ -6,11 +6,20 @@ public partial class FloatingPetView
 {
     private readonly WpfPetCatalogService _catalog;
 
-    public FloatingPetView(WpfPetCatalogService catalog)
+    public FloatingPetView(WpfPetCatalogService catalog, double scale)
     {
         _catalog = catalog;
         InitializeComponent();
+        ApplyScale(scale);
         ReloadDefaultPet();
+    }
+
+    public void ApplyScale(double scale)
+    {
+        Width = PetSpriteControl.FrameWidth * scale;
+        Height = PetSpriteControl.FrameHeight * scale;
+        Sprite.Width = Width;
+        Sprite.Height = Height;
     }
 
     public void ReloadDefaultPet()

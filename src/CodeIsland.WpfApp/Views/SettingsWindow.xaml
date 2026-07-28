@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:services="clr-namespace:CodeIsland.WpfApp.Services"
         xmlns:views="clr-namespace:CodeIsland.WpfApp.Views"
         Title="CodeIsland 设置"
         Width="840"
@@ -625,6 +626,37 @@
                               IsEnabled="{Binding PetActionsEnabled}"
                               Padding="14,7" />
                     </StackPanel>
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="220" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                      <TextBlock Text="宠物大小" Style="{StaticResource SettingsLabelStyle}" />
+                      <TextBlock Text="全局调整宠物显示尺寸，重启后保留。" Style="{StaticResource SettingsHelpStyle}" />
+                    </StackPanel>
+                    <Grid Grid.Column="1" VerticalAlignment="Center">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="52" />
+                      </Grid.ColumnDefinitions>
+                      <Slider Minimum="{x:Static services:WpfHudDensityMode.PetScalePercentMinimum}"
+                              Maximum="{x:Static services:WpfHudDensityMode.PetScalePercentMaximum}"
+                              TickFrequency="{x:Static services:WpfHudDensityMode.PetScalePercentStep}"
+                              SmallChange="{x:Static services:WpfHudDensityMode.PetScalePercentStep}"
+                              LargeChange="{x:Static services:WpfHudDensityMode.PetScalePercentStep}"
+                              IsSnapToTickEnabled="True"
+                              Value="{Binding PetScalePercent, Mode=TwoWay}" />
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding PetScalePercent, StringFormat={}{0:0}%}"
+                                 Foreground="{StaticResource HudAccentBrush}"
+                                 HorizontalAlignment="Right"
+                                 VerticalAlignment="Center" />
+                    </Grid>
                   </Grid>
                 </Border>
 

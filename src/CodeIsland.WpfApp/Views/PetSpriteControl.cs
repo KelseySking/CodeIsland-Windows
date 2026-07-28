@@ -14,7 +14,10 @@ public sealed class PetSpriteControl : Border
 {
     public const int FrameWidth = 192;
     public const int FrameHeight = 208;
+    private const int AtlasColumns = 8;
+    private const int AtlasRows = 11;
     private const int AtlasWidth = 1536;
+    private const int AtlasHeight = 2288;
     private const double LookDeadzone = 18d;
     private static readonly TimeSpan LookInterval = TimeSpan.FromMilliseconds(80);
     private static readonly AnimationRow[] Rows =
@@ -164,7 +167,8 @@ public sealed class PetSpriteControl : Border
     }
 
     private bool CanAnimate =>
-        IsLoaded && SystemParameters.ClientAreaAnimation && (RenderCapability.Tier >> 16) >= 2;
+        IsLoaded && PresentationSource.FromVisual(this) is not null &&
+        SystemParameters.ClientAreaAnimation && (RenderCapability.Tier >> 16) >= 2;
 
     private void LoadAtlas(string? path)
     {
@@ -179,7 +183,7 @@ public sealed class PetSpriteControl : Border
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-            if (decoder.Frames.Count == 0 || decoder.Frames[0].PixelWidth != AtlasWidth || decoder.Frames[0].PixelHeight != 2288)
+            if (decoder.Frames.Count == 0 || decoder.Frames[0].PixelWidth != AtlasWidth || decoder.Frames[0].PixelHeight != AtlasHeight)
                 return;
 
             var converted = new FormatConvertedBitmap(decoder.Frames[0], PixelFormats.Bgra32, null, 0);
@@ -189,7 +193,7 @@ public sealed class PetSpriteControl : Border
             converted.CopyPixels(_bgraPixels, stride, 0);
             _atlasBrush = new ImageBrush(converted)
             {
-                ViewboxUnits = BrushMappingMode.Absolute,
+                ViewboxUnits = BrushMappingMode.RelativeToBoundingBox,
                 Stretch = Stretch.Fill,
                 TileMode = TileMode.None
             };
@@ -357,8 +361,11 @@ public sealed class PetSpriteControl : Border
         _row = row;
         _column = column;
         if (_atlasBrush is not null)
-            _atlasBrush.Viewbox = new Rect(column * FrameWidth, row * FrameHeight, FrameWidth, FrameHeight);
+            _atlasBrush.Viewbox = GetFrameViewbox(row, column);
     }
+
+    private static Rect GetFrameViewbox(int row, int column) =>
+        new(column / (double)AtlasColumns, row / (double)AtlasRows, 1d / AtlasColumns, 1d / AtlasRows);
 
     private static int ResolveStatusRow(AgentStatus status) => status switch
     {
@@ -393,6 +400,12 @@ public sealed class PetSpriteControl : Border
         Debug.Assert(ResolveLookCell(0, 100) == (10, 0));
         Debug.Assert(ResolveLookCell(-100, 0) == (10, 4));
         Debug.Assert(ResolveLookCell(0, 0) is null);
+        Debug.Assert(AtlasWidth == FrameWidth * AtlasColumns);
+        Debug.Assert(AtlasHeight == FrameHeight * AtlasRows);
+        Debug.Assert(GetFrameViewbox(0, 0) == new Rect(0d, 0d, 1d / AtlasColumns, 1d / AtlasRows));
+        var lastViewbox = GetFrameViewbox(AtlasRows - 1, AtlasColumns - 1);
+        Debug.Assert(Math.Abs(lastViewbox.Right - 1d) < 1e-12);
+        Debug.Assert(Math.Abs(lastViewbox.Bottom - 1d) < 1e-12);
     }
 
     [DllImport("user32.dll")]
