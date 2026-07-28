@@ -16,6 +16,7 @@
         Background="Transparent"
         ShowInTaskbar="True"
         ShowActivated="True"
+        PreviewKeyDown="SettingsWindow_PreviewKeyDown"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
   <shell:WindowChrome.WindowChrome>
@@ -870,6 +871,61 @@
               <views:AboutView />
             </ScrollViewer>
           </Grid>
+        </Border>
+      </Grid>
+
+      <Grid x:Name="DeletePetDialog"
+            Grid.RowSpan="3"
+            Panel.ZIndex="100"
+            Visibility="Collapsed"
+            Background="#C7050507"
+            AutomationProperties.Name="删除宠物确认">
+        <Border Width="390"
+                Margin="24"
+                Padding="24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="#FF0B0B10"
+                BorderBrush="#66FF5F57"
+                BorderThickness="1"
+                CornerRadius="14"
+                KeyboardNavigation.TabNavigation="Cycle">
+          <StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <Border Width="8"
+                      Height="8"
+                      Margin="0,0,10,0"
+                      VerticalAlignment="Center"
+                      Background="#FFFF5F57"
+                      CornerRadius="4" />
+              <TextBlock Text="删除宠物？"
+                         Style="{StaticResource SettingsSectionTitleStyle}"
+                         Margin="0" />
+            </StackPanel>
+            <TextBlock x:Name="DeletePetDialogMessage"
+                       Margin="0,14,0,0"
+                       FontSize="13"
+                       Foreground="{StaticResource HudTextBrush}"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="不会删除 Codex 原目录；需要时可重新导入。"
+                       Style="{StaticResource SettingsHelpStyle}"
+                       Margin="0,8,0,0" />
+            <StackPanel Margin="0,22,0,0"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal">
+              <Button x:Name="DeletePetCancelButton"
+                      Content="取消"
+                      Click="CancelPetDeletion_Click"
+                      MinWidth="84"
+                      Margin="0,0,10,0" />
+              <Button Content="删除"
+                      Click="ConfirmPetDeletion_Click"
+                      MinWidth="84"
+                      Background="{StaticResource HudDangerBrush}"
+                      BorderBrush="#AAFF5F57"
+                      Foreground="#FFFFB4AF" />
+            </StackPanel>
+          </StackPanel>
         </Border>
       </Grid>
     </Grid>

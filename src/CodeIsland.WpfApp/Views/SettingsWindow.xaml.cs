@@ -49,6 +49,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private string _feedbackText = "设置会自动保存。";
     private string _petImportFeedback = "可选择或拖入一个 Codex V1 / V2 宠物目录、ZIP / .codex-pet 压缩包。";
     private bool _petActionsEnabled = true;
+    private WpfPetSettingsItem? _pendingPetDeletion;
+    private System.Windows.Controls.Button? _deletePetInvoker;
 
     // CodeOrbit 连接状态栏
     private string _runtimeConnectionStatus = "CodeOrbit 连接中...";
@@ -858,13 +860,23 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
     private void DeletePet_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not System.Windows.Controls.Button { Tag: WpfPetSettingsItem item })
+        if (sender is not System.Windows.Controls.Button { Tag: WpfPetSettingsItem item } button)
             return;
-        if (System.Windows.MessageBox.Show(
-                $"删除已托管的宠物“{item.DisplayName}”？\n不会删除 Codex 原目录。",
-                "删除宠物",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning) != MessageBoxResult.Yes)
+
+        _pendingPetDeletion = item;
+        _deletePetInvoker = button;
+        DeletePetDialogMessage.Text = $"确认从 CodeIsland 删除“{item.DisplayName}”？";
+        DeletePetDialog.Visibility = Visibility.Visible;
+        DeletePetCancelButton.Focus();
+    }
+
+    private void CancelPetDeletion_Click(object sender, RoutedEventArgs e) => ClosePetDeletionDialog();
+
+    private void ConfirmPetDeletion_Click(object sender, RoutedEventArgs e)
+    {
+        var item = _pendingPetDeletion;
+        ClosePetDeletionDialog(restoreFocus: false);
+        if (item is null)
             return;
 
         try
@@ -878,6 +890,27 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             PetImportFeedback = $"删除宠物失败：{ex.Message}";
             FeedbackText = PetImportFeedback;
         }
+
+        SectionPets.Focus();
+    }
+
+    private void SettingsWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (DeletePetDialog.Visibility != Visibility.Visible || e.Key != Key.Escape)
+            return;
+
+        e.Handled = true;
+        ClosePetDeletionDialog();
+    }
+
+    private void ClosePetDeletionDialog(bool restoreFocus = true)
+    {
+        var invoker = _deletePetInvoker;
+        _pendingPetDeletion = null;
+        _deletePetInvoker = null;
+        DeletePetDialog.Visibility = Visibility.Collapsed;
+        if (restoreFocus && invoker?.IsVisible == true)
+            invoker.Focus();
     }
 
     private async Task RunPetActionAsync(Func<string> action)
