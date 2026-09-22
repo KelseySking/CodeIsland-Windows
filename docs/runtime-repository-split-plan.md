@@ -288,6 +288,13 @@ If installer changes are included and Inno Setup is available:
 .\scripts\create-installer.ps1 -Runtime win-x64 -SkipPublish
 ```
 
+The Scoop manifest is generated from the release ZIP, so refresh it whenever the
+ZIP changes:
+
+```powershell
+.\scripts\scoop\update-manifest.ps1
+```
+
 Manual verification:
 
 - Start RuntimeHost.

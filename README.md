@@ -100,6 +100,21 @@ dotnet build -c Release
 dotnet run --project src/CodeIsland.WpfApp
 ```
 
+### Install
+
+Two options. Pick one — installing both leaves two copies of the app.
+
+**Installer** (offline, no extra tools): download `CodeIsland-Windows-Setup-v<version>.exe` from the [releases](https://github.com/KelseySking/CodeIsland-Windows/releases) and run it.
+
+**Scoop**:
+
+```powershell
+scoop bucket add codeisland https://github.com/KelseySking/CodeIsland-Windows
+scoop install codeisland
+```
+
+`scoop install` removes a previously installed copy of the installer (files, uninstall entry, shortcuts, and the startup entry) before installing, and keeps your settings and installed hooks. Update with `scoop update codeisland`, remove with `scoop uninstall codeisland`.
+
 After startup, the HUD floating window is shown and a CodeIsland icon appears in the system tray. In managed mode, the app automatically starts the bundled `codeorbit-host.exe` and connects to `http://127.0.0.1:32145` via REST/WebSocket.
 
 ### Publish & Package
@@ -123,8 +138,9 @@ Bundled CodeOrbit lives in `external/CodeOrbit`, pinned by `external/CodeOrbit/r
 # Windows installer (requires Inno Setup 6)
 .\scripts\create-installer.ps1
 .\scripts\create-installer.ps1 -SyncRuntime
-# Force latest CodeOrbit when packaging:
-# .\scripts\create-installer.ps1 -SyncRuntime -LatestRuntime
+
+# Refresh the Scoop manifest (version, hash, inlined pre_install) from the release ZIP
+.\scripts\scoop\update-manifest.ps1
 ```
 
 ## Hook Installation

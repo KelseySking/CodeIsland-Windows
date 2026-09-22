@@ -99,6 +99,21 @@ dotnet build -c Release
 dotnet run --project src/CodeIsland.WpfApp
 ```
 
+### 安装
+
+两种方式，二选一，不要同时装。
+
+**安装程序**（离线，无需额外工具）：从 [Releases](https://github.com/KelseySking/CodeIsland-Windows/releases) 下载 `CodeIsland-Windows-Setup-v<版本>.exe` 运行。
+
+**Scoop**：
+
+```powershell
+scoop bucket add codeisland https://github.com/KelseySking/CodeIsland-Windows
+scoop install codeisland
+```
+
+`scoop install` 会先清除之前用安装程序装的副本（文件、卸载项、快捷方式、开机自启项）再安装，并保留你的设置和已安装的 hook。更新用 `scoop update codeisland`，卸载用 `scoop uninstall codeisland`。
+
 启动后会显示 HUD 浮窗，并在托盘区创建 CodeIsland 图标。在 managed 模式下，应用会自动启动内嵌的 `codeorbit-host.exe`，通过 REST/WebSocket 连接 `http://127.0.0.1:32145`。
 
 ### 发布与打包
@@ -122,8 +137,9 @@ dotnet run --project src/CodeIsland.WpfApp
 # Windows 安装程序（需安装 Inno Setup 6）
 .\scripts\create-installer.ps1
 .\scripts\create-installer.ps1 -SyncRuntime
-# 强制最新 CodeOrbit 再打包：
-# .\scripts\create-installer.ps1 -SyncRuntime -LatestRuntime
+
+# 用发布 ZIP 刷新 Scoop manifest（版本、哈希、内联的 pre_install）
+.\scripts\scoop\update-manifest.ps1
 ```
 
 ## Hook 安装
