@@ -31,6 +31,12 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (e.Args.Contains("--toast-self-check"))
+        {
+            Shutdown(WpfWindowsToast.SelfCheck());
+            return;
+        }
+
         if (!TryAcquireSingleInstance())
         {
             System.Windows.MessageBox.Show(
@@ -62,6 +68,7 @@ public partial class App : System.Windows.Application
         };
         _settings.SettingChanged += OnRuntimeSettingChanged;
         _hudWindow = new HudWindow(_appState, _settings, _petCatalog);
+        _appState.ToastActivateRequested += () => _hudWindow.ShowNoActivate();
         _hudWindow.ShowNoActivate();
         _ = StartRuntimeAsync(_logger);
 

@@ -40,6 +40,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private readonly Queue<PendingQuestion> _questionQueue = new();
     private readonly ConcurrentDictionary<string, byte> _autoApprovingPermissionIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> _notifiedWebhookActionKeys = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _toastedKeys = new(StringComparer.Ordinal);
     /// <summary>
     /// 展示层本地失效的 pending actionId。仅影响 HUD 投影，不代表已向服务端提交 allow/deny/answer。
     /// 当服务端 pending 列表不再包含该 actionId 时清理。
@@ -127,6 +128,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         _autoApprovingPermissionIds.Clear();
         _locallyInvalidatedPendingActionIds.Clear();
         _notifiedWebhookActionKeys.Clear();
+        _toastedKeys.Clear();
         _removedHudSessionIds.Clear();
         _selectedSessionId = null;
         _selectedHudItemId = null;
@@ -447,16 +449,32 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         {
             case SideEffect.ShowApprovalCard approval:
                 NotifyWebhookApprovalOnce(change.AffectedActionId, approval.Request);
+                ToastOnce(
+                    change.AffectedActionId is { Length: > 0 } id ? $"permission:{id}" : $"permission:{approval.Request.SessionId}:{approval.Request.ToolUseId}",
+                    GetSessionToastTitle(GetSession(approval.SessionId)),
+                    string.IsNullOrWhiteSpace(approval.Request.Description) ? approval.Request.ToolName : approval.Request.Description);
                 break;
             case SideEffect.ShowQuestionCard question:
                 NotifyWebhookQuestionOnce(change.AffectedActionId, question.Question);
+                ToastOnce(
+                    change.AffectedActionId is { Length: > 0 } qid ? $"question:{qid}" : $"question:{question.Question.SessionId}:{question.Question.Question}",
+                    GetSessionToastTitle(GetSession(question.SessionId)),
+                    question.Question.Question);
                 QuestionAnswer = "";
                 RefreshQuestionOptions();
                 break;
-            case SideEffect.PlaySound ps when !string.IsNullOrWhiteSpace(change.AffectedSessionId) && IsVisibleHudSession(change.AffectedSessionId):
-                PlaySoundRequested?.Invoke(ps.SoundName);
+            case SideEffect.PlaySound ps when !string.IsNullOrWhiteSpace(change.AffectedSessionId):
+                if (IsVisibleHudSession(change.AffectedSessionId))
+                    PlaySoundRequested?.Invoke(ps.SoundName);
                 if (ps.SoundName == "complete")
+                {
                     ShowCompletion(change.AffectedSessionId);
+                    var done = GetSession(change.AffectedSessionId);
+                    ToastOnce(
+                        $"complete:{change.AffectedSessionId}:{done?.LastUpdatedAt.Ticks}",
+                        GetSessionToastTitle(done),
+                        "会话已完成");
+                }
                 break;
         }
 
@@ -1327,6 +1345,17 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         _webhookNotifier.NotifyQuestion(question);
     }
 
+    private void ToastOnce(string key, string title, string body)
+    {
+        var enabled = _settings.Get(WpfWindowsToast.SettingsKey, false);
+        var fresh = _toastedKeys.Add(key);
+        WpfWindowsToast.Trace($"gate enabled={enabled} fresh={fresh} key={key} title={title}");
+        if (!enabled || !fresh)
+            return;
+        WpfWindowsToast.Show(title, body, () =>
+            System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => ToastActivateRequested?.Invoke()));
+    }
+
     private void PruneNotifiedWebhookKeys()
     {
         if (_notifiedWebhookActionKeys.Count == 0)
@@ -1352,6 +1381,9 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
 
     private static string GetSessionSourceDisplayName(SessionSnapshot? session) =>
         session != null ? WpfSourceDisplay.GetDisplayName(session.Source, session.SourceDisplayName) : "未知工具";
+
+    private static string GetSessionToastTitle(SessionSnapshot? session) =>
+        $"{GetSessionSourceDisplayName(session)} · {GetSessionProjectName(session)}";
 
     private static string GetSessionSourceKey(SessionSnapshot? session) =>
         string.IsNullOrWhiteSpace(session?.Source) ? "unknown" : session.Source;
@@ -1771,6 +1803,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     }
 
     public event Action<string>? PlaySoundRequested;
+    public event Action? ToastActivateRequested;
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 

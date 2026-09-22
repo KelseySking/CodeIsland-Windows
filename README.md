@@ -153,7 +153,6 @@ Open **Settings > Tool Connections** to connect or disconnect supported tools:
 The tool list comes from bundled CodeOrbit plugins. WSL distro/status loading runs in the background with timeouts so the settings page stays responsive. New CodeOrbit releases can add or update tool integrations without changing the display client.
 
 | Tool | Status |
-
 |------|------|
 | AntiGravity | Supported |
 | Claude Code | Supported |

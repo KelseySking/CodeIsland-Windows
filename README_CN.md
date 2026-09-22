@@ -152,7 +152,6 @@ scoop install codeisland
 工具列表由内置 CodeOrbit 插件提供。WSL 列表与状态在后台加载并带超时，避免阻塞设置页。后续 CodeOrbit 更新可以新增或更新工具集成，而不需要修改展示客户端。
 
 | 工具 | 状态 |
-
 |------|------|
 | AntiGravity | 已适配 |
 | Claude Code | 已适配 |

@@ -243,6 +243,20 @@
                   <Grid>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                      <TextBlock Text="系统通知" Style="{StaticResource SettingsLabelStyle}" />
+                      <TextBlock Text="权限、问答和完成会进通知中心。" Style="{StaticResource SettingsHelpStyle}" />
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" Style="{StaticResource SettingsToggleStyle}" IsChecked="{Binding WindowsToastEnabled, Mode=TwoWay}" />
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
                       <ColumnDefinition Width="320" />
                     </Grid.ColumnDefinitions>
                     <StackPanel>

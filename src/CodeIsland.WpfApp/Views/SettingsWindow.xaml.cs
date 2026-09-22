@@ -43,6 +43,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private string _approveHotkey = "Ctrl+Alt+Y";
     private string _denyHotkey = "Ctrl+Alt+N";
     private bool _soundEnabled = true;
+    private bool _windowsToastEnabled;
     private bool _smartSoundSuppression = true;
     private bool _showFullRecentMessages;
     private double _volumePercent = 70;
@@ -103,6 +104,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _approveHotkey = _settings.Get("hotkey_approve", "Ctrl+Alt+Y");
         _denyHotkey = _settings.Get("hotkey_deny", "Ctrl+Alt+N");
         _soundEnabled = _settings.Get("sound_enabled", true);
+        _windowsToastEnabled = _settings.Get(WpfWindowsToast.SettingsKey, false);
         _smartSoundSuppression = _settings.Get("smart_suppression", true);
         _showFullRecentMessages = _settings.Get("show_full_recent_messages", false);
         _volumePercent = Math.Clamp(_settings.Get("volume", 0.7), 0.0, 1.0) * 100.0;
@@ -698,6 +700,19 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             OnPropertyChanged();
             _settings.Set("sound_enabled", value);
             FeedbackText = value ? "音效已开启" : "音效已关闭";
+        }
+    }
+
+    public bool WindowsToastEnabled
+    {
+        get => _windowsToastEnabled;
+        set
+        {
+            if (_windowsToastEnabled == value) return;
+            _windowsToastEnabled = value;
+            OnPropertyChanged();
+            _settings.Set(WpfWindowsToast.SettingsKey, value);
+            FeedbackText = value ? "系统通知已开启" : "系统通知已关闭";
         }
     }
 
