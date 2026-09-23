@@ -550,8 +550,10 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
                 continue;
 
             // 权威源仍返回 pending 时，用会话推进信号做展示层失效兜底（不提交 allow/deny/answer）。
-            if (_locallyInvalidatedPendingActionIds.Contains(pending.ActionId) ||
-                IsStalePendingAction(pending))
+            // 问答除外：会话心跳/新消息会把问答卡藏掉，Claude 端一直等到超时。
+            if (pending.Question == null &&
+                (_locallyInvalidatedPendingActionIds.Contains(pending.ActionId) ||
+                 IsStalePendingAction(pending)))
             {
                 _locallyInvalidatedPendingActionIds.Add(pending.ActionId);
                 continue;
