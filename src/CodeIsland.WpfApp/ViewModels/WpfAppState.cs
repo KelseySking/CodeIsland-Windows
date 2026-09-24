@@ -213,16 +213,27 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     public string SessionCountText => VisibleHudSessionCount == 0 ? "0/0" : $"{ActiveSessionCount}/{VisibleHudSessionCount}";
     public string ActiveSource => PrimaryHudSession?.Source ?? NeutralHudSource;
     public AgentStatus ActiveStatus => PrimaryHudSession?.Status ?? AgentStatus.Idle;
-    public string ActiveStatusText => ActiveStatus switch
+    public string ActiveStatusText
     {
-        AgentStatus.Processing => "处理中",
-        AgentStatus.Running => "运行中",
-        AgentStatus.WaitingApproval => "等待审批",
-        AgentStatus.WaitingQuestion => "等待回答",
-        AgentStatus.Completed => "已完成",
-        AgentStatus.Error => "错误",
-        _ => "空闲"
-    };
+        get
+        {
+            var text = ActiveStatus switch
+            {
+                AgentStatus.Processing => "处理中",
+                AgentStatus.Running => "运行中",
+                AgentStatus.WaitingApproval => "等待审批",
+                AgentStatus.WaitingQuestion => "等待回答",
+                AgentStatus.Completed => "已完成",
+                AgentStatus.Error => "错误",
+                _ => "空闲"
+            };
+
+            if (PrimaryHudSession is { BackgroundActive: > 0 } session)
+                text += $" · 后台 {session.BackgroundActive}";
+
+            return text;
+        }
+    }
     public string CenterText => PrimaryHudSession?.ProjectName ?? PrimaryHudSession?.WorkingDirectory ?? (VisibleHudSessionCount == 0 ? "没有活跃会话" : $"{VisibleHudSessionCount} 个会话");
     public bool HasPendingAction => PendingKind != WpfPendingKind.None;
     public WpfPendingKind PendingKind => _permissionQueue.Count > 0 ? WpfPendingKind.Permission : _questionQueue.Count > 0 ? WpfPendingKind.Question : WpfPendingKind.None;

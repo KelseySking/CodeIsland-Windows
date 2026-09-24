@@ -24,6 +24,7 @@
       "PostToolUseFailure",
       "PermissionRequest",
       "Stop",
+      "StopFailure",
       "SubagentStart",
       "SubagentStop",
       "SessionStart",
