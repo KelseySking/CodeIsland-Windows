@@ -743,6 +743,9 @@ public sealed class WpfRuntimeApiClient : IWpfRuntimeClient, IWpfSourceService
             TranscriptPosition = dto.TranscriptPosition,
             TerminalApp = dto.TerminalApp,
             TerminalSessionId = dto.TerminalSessionId,
+            BackgroundActive = dto.BackgroundActive,
+            TurnOutcome = string.IsNullOrWhiteSpace(dto.TurnOutcome) ? "unspecified" : dto.TurnOutcome,
+            PermissionMode = dto.PermissionMode,
             RecentMessages = dto.RecentMessages.Select(MapMessage).ToList(),
             ToolHistory = dto.ToolHistory.Select(MapToolHistory).ToList()
         };

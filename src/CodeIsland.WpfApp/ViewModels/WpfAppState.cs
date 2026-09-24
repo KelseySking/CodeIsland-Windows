@@ -293,11 +293,11 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         ? (SelectedSession == null ? "请选择一个任务" : $"{SelectedSession.Source} · {SelectedSession.StatusText}")
         : $"{SelectedHudItem.SourceDisplayName} · {SelectedHudItem.ProjectName}";
     public string DetailStatusText => SelectedHudItem?.StatusText ?? SelectedSession?.StatusText ?? "未知";
-    public string DetailToolText => SelectedSession?.ToolText ?? "$ 就绪";
+    public string DetailToolText => FormatDetailToolText(SelectedSnapshot);
     public string DetailUserPrompt => FormatRecentMessage(SelectedSnapshot?.LastUserPrompt, "暂无用户问题");
     public string DetailAssistantReplyTitle => $"{SelectedSession?.Source ?? "AI"} 回复";
     // 详情/完成卡要完整 Markdown 原文，不再截首行
-    public string DetailAssistantReply => FormatFullMessage(GetSelectedSessionAssistantReply(), $"暂无 {SelectedSession?.Source ?? "AI"} 回复");
+    public string DetailAssistantReply => FormatSessionAssistantReply(SelectedSnapshot);
     public string CompletionTitle => CompletionSession == null ? "回复已完成" : $"{WpfSourceDisplay.GetDisplayName(CompletionSession.Source, CompletionSession.SourceDisplayName)} 回复已完成";
     public string CompletionSource => CompletionSession == null ? "未知工具" : WpfSourceDisplay.GetDisplayName(CompletionSession.Source, CompletionSession.SourceDisplayName);
     public string CompletionProject => CompletionSession?.ProjectName ?? CompletionSession?.WorkingDirectory ?? "未知项目";
@@ -706,14 +706,6 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         AgentStatus.Idle => 20,
         _ => 0
     };
-
-    private string? GetSelectedSessionAssistantReply()
-    {
-        if (SelectedSnapshot is not { } session)
-            return null;
-
-        return GetSessionAssistantReply(session);
-    }
 
     public void ShowSessionList()
     {
@@ -1217,7 +1209,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
                 existing.UpdateSessionPresentation(
                     title,
                     vm.Title,
-                    vm.LastMessage,
+                    FormatSessionSummary(session, vm),
                     vm.SourceKey,
                     vm.Source,
                     vm.StatusText,
@@ -1237,7 +1229,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
                     vm.SessionId,
                     title,
                     vm.Title,
-                    vm.LastMessage,
+                    FormatSessionSummary(session, vm),
                     vm.SourceKey,
                     vm.Source,
                     vm.StatusText,
@@ -1404,9 +1396,52 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
     private string FormatSessionAssistantReply(SessionSnapshot? session)
     {
         var source = session == null ? "AI" : WpfSourceDisplay.GetDisplayName(session.Source, session.SourceDisplayName);
-        // 内联展开详情同样渲染完整 Markdown
-        return FormatFullMessage(GetSessionAssistantReply(session), $"暂无 {source} 回复");
+        var reply = GetSessionAssistantReply(session);
+        if (!string.IsNullOrWhiteSpace(reply))
+            return reply;
+        return FormatLiveActivity(session) ?? $"暂无 {source} 回复";
     }
+
+    /// <summary>
+    /// 只反映当前快照。工具结束后基座会清空 current tool，这里不回看 toolHistory。
+    /// </summary>
+    private string? FormatLiveActivity(SessionSnapshot? session)
+    {
+        if (session == null)
+            return null;
+
+        var tool = WpfSessionItemViewModel.FormatCurrentTool(session);
+        if (tool != null)
+            return tool;
+
+        if (session.Status is AgentStatus.Processing or AgentStatus.Running &&
+            !string.IsNullOrWhiteSpace(session.LastAssistantMessage))
+            return FormatRecentMessage(session.LastAssistantMessage, "");
+
+        return null;
+    }
+
+    private static string FormatDetailToolText(SessionSnapshot? session)
+    {
+        if (session != null && WpfSessionItemViewModel.FormatCurrentTool(session) is { } tool)
+            return tool;
+        if (session != null &&
+            session.Status is AgentStatus.Processing or AgentStatus.Running &&
+            !string.IsNullOrWhiteSpace(session.LastAssistantMessage))
+            return session.LastAssistantMessage;
+        return session?.Status switch
+        {
+            AgentStatus.WaitingApproval => "$ 等待权限审批",
+            AgentStatus.WaitingQuestion => "$ 等待你的回答",
+            AgentStatus.Completed => "$ 会话已完成",
+            AgentStatus.Error => "$ 需要关注错误",
+            AgentStatus.Processing => "$ 思考中_",
+            _ => "$ 就绪"
+        };
+    }
+
+    private string FormatSessionSummary(SessionSnapshot? session, WpfSessionItemViewModel vm) =>
+        FormatLiveActivity(session) ?? vm.LastMessage;
 
     private static string? GetSessionAssistantReply(SessionSnapshot? session)
     {
@@ -1459,7 +1494,7 @@ public sealed class WpfAppState : INotifyPropertyChanged, IDisposable
         selectedItem.UpdateSessionPresentation(
             kind == WpfHudListItemKind.Completed ? "已完成" : "运行中",
             sessionItem.Title,
-            sessionItem.LastMessage,
+            FormatSessionSummary(session, sessionItem),
             sessionItem.SourceKey,
             sessionItem.Source,
             sessionItem.StatusText,

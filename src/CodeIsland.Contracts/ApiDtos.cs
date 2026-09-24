@@ -98,7 +98,10 @@ public sealed record SessionDto(
     string? TerminalApp,
     string? TerminalSessionId,
     IReadOnlyList<ChatMessageDto> RecentMessages,
-    IReadOnlyList<ToolHistoryEntryDto> ToolHistory);
+    IReadOnlyList<ToolHistoryEntryDto> ToolHistory,
+    uint BackgroundActive = 0,
+    string TurnOutcome = "unspecified",
+    string? PermissionMode = null);
 
 public sealed record PermissionRequestDto(
     string SessionId,

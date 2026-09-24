@@ -126,6 +126,8 @@ All routes below are under `/api`.
 | `POST` | `/sessions/{sessionId}/dismiss` | Remove a session from Runtime state. | `{ success: true }` or `404` |
 | `POST` | `/sessions/{sessionId}/activate-terminal` | Request terminal activation for a session. | `{ success: true }` or `404` |
 
+Claude sessions also carry `turnOutcome` (`unspecified` / `succeeded` / `failed`), `permissionMode` (`default` / `acceptEdits` / `bypassPermissions` / `plan`, omitted when unknown), and `backgroundActive`. Runtime computes these from Claude hooks. Display clients must not infer them from process liveness or terminal contents. `permissionMode` is a standing mode, not a pending approval; a `bypassPermissions` session is not waiting on anyone. Other sources keep `turnOutcome` as `unspecified`, omit `permissionMode`, and send `backgroundActive` as `0`. Older display clients that ignore these fields keep working.
+
 ### Pending Actions
 
 | Method | Path | Purpose | Request | Response |

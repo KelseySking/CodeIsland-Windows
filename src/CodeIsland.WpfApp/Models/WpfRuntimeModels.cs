@@ -35,6 +35,12 @@ public sealed class SessionSnapshot
     public long TranscriptPosition { get; set; }
     public string? TerminalApp { get; set; }
     public string? TerminalSessionId { get; set; }
+    /// <summary>在飞后台任务数。只有 Claude 写，其它源为 0。</summary>
+    public uint BackgroundActive { get; set; }
+    /// <summary>最近一轮结果：unspecified / succeeded / failed。只有 Claude 写。</summary>
+    public string TurnOutcome { get; set; } = "unspecified";
+    /// <summary>当前权限档位。只有 Claude 写，读不到为空。持续档位，不是一次待审批。</summary>
+    public string? PermissionMode { get; set; }
 
     public SessionSnapshot Clone() => new()
     {
@@ -70,7 +76,10 @@ public sealed class SessionSnapshot
         TranscriptPath = TranscriptPath,
         TranscriptPosition = TranscriptPosition,
         TerminalApp = TerminalApp,
-        TerminalSessionId = TerminalSessionId
+        TerminalSessionId = TerminalSessionId,
+        BackgroundActive = BackgroundActive,
+        TurnOutcome = TurnOutcome,
+        PermissionMode = PermissionMode
     };
 
     public static void AddRecentMessage(SessionSnapshot snapshot, ChatMessage message, int maxMessages = 6)
